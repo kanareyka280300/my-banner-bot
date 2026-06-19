@@ -59,33 +59,33 @@ async def update_banner_loop():
             for channel in full_guild.voice_channels:
                 voice_members += len(channel.members)
 
-        # Символы иконок и цифры
+        # Коды иконок и цифры
         icon_user = "\uf0c0"  
         icon_voice = "\uf130" 
         num_user = f"{total_members}"
         num_voice = f"{voice_members}"
 
-        # Настраиваем размеры: иконки 46, цифры крупные 54
+        # МАСШТАБ: Делаем шрифт ОГРОМНЫМ (Размер 80), чтобы его было хорошо видно с ПК и телефона
         try:
-            font_icons = ImageFont.truetype('iconfont.ttf', size=46)
+            font_icons = ImageFont.truetype('iconfont.ttf', size=80)
         except:
-            font_icons = ImageFont.load_default(size=46)
+            font_icons = ImageFont.load_default(size=80)
 
         try:
-            font_nums = ImageFont.load_default(size=54)
+            font_nums = ImageFont.load_default(size=80)
         except:
             font_nums = ImageFont.load_default()
 
-        # ВЫРАВНИВАНИЕ: Иконка стоит слева (X=85), текст цифр смещен вправо (X=175).
-        # Координаты Y (210 и 300) выровнены так, чтобы текст шел строго по центру иконки.
+        # ЦЕНТРИРОВАНИЕ: Сдвигаем X вправо (на 130 и 250), а Y опускаем вниз (на 240 и 370)
+        # Теперь огромные цифры и значки встанут ровно по центру вашего неонового квадрата!
         
         # Строка 1: Участники
-        draw.text((85, 210), icon_user, fill=(255, 255, 255), font=font_icons)
-        draw.text((175, 205), num_user, fill=(255, 255, 255), font=font_nums)
+        draw.text((130, 240), icon_user, fill=(255, 255, 255), font=font_icons)
+        draw.text((250, 240), num_user, fill=(255, 255, 255), font=font_nums)
 
         # Строка 2: Голосовой онлайн
-        draw.text((90, 300), icon_voice, fill=(255, 255, 255), font=font_icons)
-        draw.text((175, 295), num_voice, fill=(255, 255, 255), font=font_nums)
+        draw.text((135, 370), icon_voice, fill=(255, 255, 255), font=font_icons)
+        draw.text((250, 370), num_voice, fill=(255, 255, 255), font=font_nums)
 
         img_byte_arr = io.BytesIO()
         image.save(img_byte_arr, format='PNG')
@@ -94,7 +94,7 @@ async def update_banner_loop():
         await guild.edit(banner=img_byte_arr.read())
         print("Баннер успешно обновлен со статистикой!")
     except Exception as e:
-        print(f"Ошибка при обновлении баннера: {e}")
+        print(f"Ошибка при更新 баннера: {e}")
 
 @bot.command()
 async def forcebanner(ctx):
