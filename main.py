@@ -76,16 +76,15 @@ async def update_banner_loop():
         except:
             font_nums = ImageFont.load_default()
 
-        # ИДЕАЛЬНОЕ ЦЕНТРИРОВАНИЕ: опустили Y на 340 и 470, сдвинули X на 160 и 280
+        # ПОЛНОЕ ЦЕНТРИРОВАНИЕ: опустили Y на 390 и 520, сохранив идеальный X
         
         # Строка 1: Участники
-        draw.text((160, 340), icon_user, fill=(255, 255, 255), font=font_icons)
-        draw.text((280, 340), num_user, fill=(255, 255, 255), font=font_nums)
+        draw.text((160, 390), icon_user, fill=(255, 255, 255), font=font_icons)
+        draw.text((280, 390), num_user, fill=(255, 255, 255), font=font_nums)
 
         # Строка 2: Голосовой онлайн
-        draw.text((165, 470), icon_voice, fill=(255, 255, 255), font=font_icons)
-        draw.text((280, 470), num_voice, fill=(255, 255, 255), font=font_nums)
-
+        draw.text((165, 520), icon_voice, fill=(255, 255, 255), font=font_icons)
+        draw.text((280, 520), num_voice, fill=(255, 255, 255), font=font_nums)
         img_byte_arr = io.BytesIO()
         image.save(img_byte_arr, format='PNG')
         img_byte_arr.seek(0)
