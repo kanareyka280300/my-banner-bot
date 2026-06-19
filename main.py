@@ -76,16 +76,15 @@ async def update_banner_loop():
         except:
             font_nums = ImageFont.load_default()
 
-        # ЦЕНТРИРОВАНИЕ: Сдвигаем X вправо (на 130 и 250), а Y опускаем вниз (на 240 и 370)
-        # Теперь огромные цифры и значки встанут ровно по центру вашего неонового квадрата!
+        # ИДЕАЛЬНОЕ ЦЕНТРИРОВАНИЕ: опустили Y на 290 и 420, сдвинули X на 140 и 260
         
         # Строка 1: Участники
-        draw.text((130, 240), icon_user, fill=(255, 255, 255), font=font_icons)
-        draw.text((250, 240), num_user, fill=(255, 255, 255), font=font_nums)
+        draw.text((140, 290), icon_user, fill=(255, 255, 255), font=font_icons)
+        draw.text((260, 290), num_user, fill=(255, 255, 255), font=font_nums)
 
         # Строка 2: Голосовой онлайн
-        draw.text((135, 370), icon_voice, fill=(255, 255, 255), font=font_icons)
-        draw.text((250, 370), num_voice, fill=(255, 255, 255), font=font_nums)
+        draw.text((145, 420), icon_voice, fill=(255, 255, 255), font=font_icons)
+        draw.text((260, 420), num_voice, fill=(255, 255, 255), font=font_nums)
 
         img_byte_arr = io.BytesIO()
         image.save(img_byte_arr, format='PNG')
