@@ -1,11 +1,12 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import io
 import os
+from PIL import Image, ImageDraw, ImageFont
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-# Код веб-сервера для обхода ограничений бесплатного хостинга
+# Код веб-сервера для Render
 class WebServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -21,31 +22,62 @@ threading.Thread(target=run_web_server, daemon=True).start()
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True 
+intents.voice_states = True 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f'Бот {bot.user.name} успішно запущений і готовий до роботи!')
+    print(f'Бот {bot.user.name} успішно запущений!')
+    update_banner_loop.start()
 
-@bot.command()
-async def setbanner(ctx):
-    if not ctx.message.attachments:
-        await ctx.send("Будь ласка, прикріпіть картинку до повідомлення з командою!")
+@tasks.loop(minutes=3)
+async def update_banner_loop():
+    # НАСТРОЙКА: Вставьте ID вашего сервера вместо цифр ниже
+    GUILD_ID = 1489687778710130728  
+    
+    guild = bot.get_guild(GUILD_ID)
+    if guild is None:
+        print("Сервер не найден! Проверьте GUILD_ID.")
         return
-    attachment = ctx.message.attachments
-    if not attachment.filename.lower().endswith(('png', 'jpg', 'jpeg')):
-        await ctx.send("Файл має бути картинкою у форматі PNG або JPG!")
-        return
-    await ctx.send("Завантажую та встановлюю баннер...")
+
     try:
-        image_bytes = await attachment.read()
-        await ctx.guild.edit(banner=image_bytes)
-        await ctx.send("Ура! Баннер сервера успішно оновлено!")
-    except discord.Forbidden:
-        await ctx.send("У мене немає прав на зміну баннера, або у сервера немає 2-го рівня бусту (Boost Level 2).")
-    except Exception as e:
-        await ctx.send(f"Сталася помилка: {e}")
+        # Открываем вашу фоновую картинку
+        image = Image.open('фон.png') 
+        draw = ImageDraw.Draw(image)
 
-# Бот автоматически возьмет токен из настроек хостинга Render
+        # Считаем участников
+        total_members = guild.member_count
+
+        # Считаем людей в голосовых каналах
+        voice_members = 0
+        for channel in guild.voice_channels:
+            voice_members += len(channel.members)
+
+        # Текст для вывода
+        text_line1 = f"Всего: {total_members}"
+        text_line2 = f"В голосовых: {voice_members}"
+
+        # Используем стандартный шрифт
+        try:
+            font = ImageFont.load_default()
+        except:
+            font = None
+
+        # Точные координаты (X=70, Y=230) и (X=70, Y=280) чтобы попасть внутрь вашей рамки
+        # Цвет текста — неоново-белый
+        draw.text((70, 230), text_line1, fill=(255, 255, 255), font=font)
+        draw.text((70, 280), text_line2, fill=(255, 255, 255), font=font)
+
+        # Сохраняем и отправляем в Discord
+        img_byte_arr = io.BytesIO()
+        image.save(img_byte_arr, format='PNG')
+        img_byte_arr.seek(0)
+
+        await guild.edit(banner=img_byte_arr.read())
+        print("Баннер успешно обновлен со статистикой!")
+    except Exception as e:
+        print(f"Ошибка при обновлении баннера: {e}")
+
 token = os.environ.get('DISCORD_TOKEN')
 bot.run(token)
