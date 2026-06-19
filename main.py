@@ -58,17 +58,16 @@ async def update_banner_loop():
         text_line1 = f"Всего: {total_members}"
         text_line2 = f"В голосовых: {voice_members}"
 
-        # Используем стандартный шрифт
+        # НАСТРОЙКА ШРИФТА: используем загруженный шрифт и ставим крупный размер 28
         try:
+            font = ImageFont.truetype('myfont.ttf', 28)
+        except Exception as e:
+            print(f"Не удалось загрузить шрифт, использую стандартный: {e}")
             font = ImageFont.load_default()
-        except:
-            font = None
 
-        # Точные координаты (X=70, Y=230) и (X=70, Y=280) чтобы попасть внутрь вашей рамки
-        # Цвет текста — неоново-белый
-        draw.text((70, 230), text_line1, fill=(255, 255, 255), font=font)
-        draw.text((70, 280), text_line2, fill=(255, 255, 255), font=font)
-
+        # Точные координаты для крупного шрифта, чтобы он попал в рамку
+        draw.text((65, 230), text_line1, fill=(255, 255, 255), font=font)
+        draw.text((65, 280), text_line2, fill=(255, 255, 255), font=font)
         # Сохраняем и отправляем в Discord
         img_byte_arr = io.BytesIO()
         image.save(img_byte_arr, format='PNG')
