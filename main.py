@@ -6,7 +6,7 @@ from PIL import Image, ImageDraw, ImageFont
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-# Код веб-сервера для Render
+# Код веб-сервера для хостинга Render
 class WebServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -34,9 +34,8 @@ async def on_ready():
 
 @tasks.loop(minutes=3)
 async def update_banner_loop():
-    GUILD_ID = 1489687778710130728  # Ваш ID сервера уже внутри коду
+    GUILD_ID = 1489687778710130728  # Ваш точный ID сервера
     
-    # Теперь бот запрашивает сервер напрямую у Discord, это надежно
     try:
         guild = await bot.fetch_guild(GUILD_ID)
     except Exception as e:
@@ -44,14 +43,19 @@ async def update_banner_loop():
         return
 
     try:
-        # Бот сам найдет любой файл картинки в папке
-image_file = [f for f in os.listdir('.') if f.endswith(('.png', '.jpg', '.jpeg')) and f != 'main.py'][0]
-image = Image.open(image_file)
+        # Пытаемся открыть файл картинки по его системному имени на Render
+        # Если в прошлый раз загрузился как "фон.png", бот проверит оба варианта
+        try:
+            image = Image.open('background.png')
+        except:
+            image = Image.open('фон.png')
+            
+        draw = ImageDraw.Draw(image)
 
         # Считаем участников
         total_members = guild.member_count
 
-        # Считаем людей в голосовых каналах (запрашиваем актуальное состояние)
+        # Считаем людей в голосовых каналах
         full_guild = bot.get_guild(GUILD_ID)
         voice_members = 0
         if full_guild:
