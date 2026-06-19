@@ -44,9 +44,9 @@ async def update_banner_loop():
         return
 
     try:
-        # Открываем фоновую картинку
-        image = Image.open('фон.png') 
-        draw = ImageDraw.Draw(image)
+        # Бот сам найдет любой файл картинки в папке
+image_file = [f for f in os.listdir('.') if f.endswith(('.png', '.jpg', '.jpeg')) and f != 'main.py'][0]
+image = Image.open(image_file)
 
         # Считаем участников
         total_members = guild.member_count
