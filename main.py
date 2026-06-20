@@ -73,13 +73,13 @@ async def on_member_update(before, after):
         
         # Перше повідомлення з описом умов та посиланням на сайт реєстрації
         embed_rules = discord.Embed(
-            title="⚔️ ВІТАЄМО У СІМ'Ї KAGE | РЕКРУТИНГ ⚔️",
+            title="⚔️ ВІТАЄМО У СІМ'Ї KAGE ",
             description=f"Привіт, {after.mention}! Ти обрав роль гравця GTA.\n\n"
                         f"📌 **Головні умови вступу до нашої родини:**\n"
                         f"1. Кожен учасник або учасниця при заході в гру обов'язково повинен ставити прізвище **Kage**.\n"
-                        f"2. Тобі необхідно перейти на наш сайт та зареєструватися за цим посиланням:\n"
-                        f"🔗 [**ПОСИЛАННЯ_НА_ВАШ_САЙТ_ТУТ**](https://ng-gta5.com/)\n"
-                        f"3. Обов'язково зайди в канал **<#1516861856080330813>** та ознайомся з важливою інформацією.\n\n"
+                        f"2. Тобі необхідно перейти на сайт та зареєструватися за цим посиланням:\n"
+                        f"🔗 [**ПОСИЛАННЯ_НА_САЙТ_ТУТ**](https://ng-gta5.com/)\n"
+                        f"3. Обов'язково зайди в канал **<#1516862013718921217>** та ознайомся з важливою інформацією.\n\n"
                         f"Зараз бот проведе автоматичне опитування. Будь ласка, відповідай на кожне питання одним повідомленням. Починаємо!",
             color=0x00ffff
         )
@@ -120,12 +120,12 @@ async def run_interview(channel, member):
     if admin_channel:
         await admin_channel.send(content="🔔 **Надійшла нова анкетна заявка GTA!**", embed=result_embed)
     
+     # Мгновенно удаляем временный канал анкеты кандидата
     active_interviews.discard(member.id)
-    await discord.utils.sleep_until(discord.utils.utcnow() + discord.utils.Duration(seconds=10))
     try:
-        await channel.delete()
-    except:
-        pass
+        await channel.delete(reason="Анкета успішно заповнена та надіслана")
+    except Exception as e:
+        print(f"Помилка видалення каналу: {e}")
 
 # --- АВТОМАТИЧНИЙ БАННЕР ---
 @tasks.loop(minutes=3)
