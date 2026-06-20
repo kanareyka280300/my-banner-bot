@@ -149,10 +149,20 @@ async def update_banner_loop():
         icon_user, icon_voice = "\uf0c0", "\uf130"
         num_user, num_voice = f"{total_members}", f"{voice_members}"
 
-        try: font_icons = ImageFont.truetype('iconfont.ttf', size=46)
-        except: font_icons = ImageFont.load_default(size=46)
-        try: font_nums = ImageFont.load_default(size=54)
-        except: font_nums = ImageFont.load_default()
+        # НАСТРОЙКА КРУПНЫХ ШРИФТОВ: Иконки и Цифры (Размер 80)
+        try:
+            font_icons = ImageFont.truetype('iconfont.ttf', size=80)
+        except:
+            font_icons = ImageFont.load_default()
+
+        try:
+            # Используем ваш загруженный шрифт Impact для огромных цифр
+            font_nums = ImageFont.truetype('myfont.ttf', size=80)
+        except:
+            try:
+                font_nums = ImageFont.load_default(size=80)
+            except:
+                font_nums = ImageFont.load_default()
         
         draw.text((160, 390), icon_user, fill=(255, 255, 255), font=font_icons)
         draw.text((280, 390), num_user, fill=(255, 255, 255), font=font_nums)
