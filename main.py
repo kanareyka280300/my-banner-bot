@@ -2,7 +2,9 @@ import discord
 from discord.ext import commands, tasks
 import io
 import os
-import aiohttp
+import json
+import urllib.request
+import asyncio
 from PIL import Image, ImageDraw, ImageFont
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
@@ -50,7 +52,20 @@ async def on_ready():
     if not update_banner_loop.is_running():
         update_banner_loop.start()
 
-# --- БЛОК СТАТИСТИКИ PUBG (УНІВЕРСАЛЬНИЙ ТА НАДІЙНИЙ) ---
+# --- ВНУТРЕННЯЯ СИНХРОННАЯ ФУНКЦИЯ ДЛЯ ЗАПРОСОВ К PUBG API ---
+def fetch_pubg_data(url, key):
+    req = urllib.request.Request(url)
+    req.add_header("Authorization", f"Bearer {key}")
+    req.add_header("Accept", "application/vnd.api+json")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return response.status, json.loads(response.read().decode())
+    except urllib.error.HTTPError as e:
+        return e.code, None
+    except:
+        return 500, None
+
+# --- БЛОК СТАТИСТИКИ PUBG ---
 @bot.command(name="stats")
 async def pubg_stats(ctx, *, player_name: str):
     pubg_key = os.environ.get('PUBG_TOKEN')
@@ -60,83 +75,80 @@ async def pubg_stats(ctx, *, player_name: str):
 
     await ctx.send(f"🔍 Шукаю статистику гравця **{player_name}** в базі PUBG Steam...")
 
-    headers = {
-        "Authorization": f"Bearer {pubg_key}",
-        "Accept": "application/vnd.api+json"
-    }
+    # 1. Шукаємо гравця за нікнеймом у Steam
+    player_url = f"https://pubg.com[playerNames]={player_name}"
+    loop = asyncio.get_event_loop()
+    status, player_data = await loop.run_in_executor(None, fetch_pubg_data, player_url, pubg_key)
 
-    async with aiohttp.ClientSession() as session:
-        # 1. Шукаємо гравця за нікнеймом у Steam
-        player_url = f"https://pubg.com[playerNames]={player_name}"
-        try:
-            async with session.get(player_url, headers=headers) as resp:
-                if resp.status == 401:
-                    await ctx.send("❌ Помилка авторизації: Перевірте, чи правильно скопійовано PUBG_TOKEN на Render!")
-                    return
-                if resp.status != 200:
-                    await ctx.send(f"❌ Гравця з нікнеймом **{player_name}** не знайдено в Steam. Перевірте регістр букв!")
-                    return
-                player_data = await resp.json()
-                player_id = player_data['data']['id']
-                actual_name = player_data['data']['attributes']['name']
-        except Exception as e:
-            await ctx.send(f"❌ Помилка пошуку гравця: {e}")
-            return
-
-        # 2. Запитуємо загальну статистику за весь час (Lifetime)
-        stats_url = f"https://pubg.com{player_id}/seasons/lifetime"
-        try:
-            async with session.get(stats_url, headers=headers) as resp:
-                if resp.status != 200:
-                    await ctx.send("❌ Не вдалося завантажити статистику матчів.")
-                    return
-                stats_data = await resp.json()
-                game_stats = stats_data['data']['attributes']['gameModeStats']
-        except Exception as e:
-            await ctx.send(f"❌ Помилка завантаження сезону: {e}")
-            return
-
-        # Збираємо дані з усіх сквад-режимів (Squad TPP та Squad FPP)
-        modes = ['squad', 'squad-fpp']
-        wins, kills, rounds, top10s, damage = 0, 0, 0, 0, 0
-        found_data = False
-
-        for mode in modes:
-            if mode in game_stats:
-                mode_data = game_stats[mode]
-                if mode_data.get('roundsPlayed', 0) > 0:
-                    rounds += mode_data.get('roundsPlayed', 0)
-                    wins += mode_data.get('wins', 0)
-                    kills += mode_data.get('kills', 0)
-                    top10s += mode_data.get('top10s', 0)
-                    damage += int(mode_data.get('damageDealt', 0))
-                    found_data = True
-
-        if not found_data:
-            await ctx.send(f"📊 У гравця **{actual_name}** немає зіграних матчів у режимі Squad (FPP/TPP).")
-            return
-
-        # Рахуємо K/D та середні показники
-        kd = round(kills / max(rounds - wins, 1), 2)
-        avg_dmg = round(damage / max(rounds, 1), 1)
-        win_rate = round((wins / max(rounds, 1)) * 100, 1)
-
-        # 3. Будуємо красиву картку виводу статистики українською мовою
-        embed = discord.Embed(
-            title=f"🔥 СТАТИСТИКА ГРАВЦЯ PUBG: {actual_name} 🔥",
-            description=f"Платформа: **Steam** | Режим: **Squad (Lifetime)**",
-            color=0x00ffff
-        )
-        embed.add_field(name="Зіграно каток 🎮", value=f"{rounds}", inline=True)
-        embed.add_field(name="Перемоги (Топ-1) 🏆", value=f"{wins} ({win_rate}%)", inline=True)
-        embed.add_field(name="Попадання в Топ-10 🎯", value=f"{top10s}", inline=True)
+    if status == 401:
+        await ctx.send("❌ Помилка авторизації: Перевірте, чи правильно скопійовано PUBG_TOKEN на Render!")
+        return
+    if status != 200 or not player_data:
+        await ctx.send(f"❌ Гравця з нікнеймом **{player_name}** не знайдено в Steam. Перевірте регістр букв!")
+        return
         
-        embed.add_field(name="Всього фрагів 💀", value=f"{kills}", inline=True)
-        embed.add_field(name="Рейтинг K/D 📈", value=f"**{kd}**", inline=True)
-        embed.add_field(name="Сер. урон за матч ⚔️", value=f"{avg_dmg}", inline=True)
-        
-        embed.set_footer(text=f"PUBG ID: {player_id}")
-        await ctx.send(embed=embed)
+    try:
+        player_id = player_data['data'][0]['id']
+        actual_name = player_data['data'][0]['attributes']['name']
+    except:
+        await ctx.send("❌ Сталася помилка при зчитуванні ID гравця.")
+        return
+
+    # 2. Запитуємо загальну статистику за весь час (Lifetime)
+    stats_url = f"https://pubg.com{player_id}/seasons/lifetime"
+    status, stats_data = await loop.run_in_executor(None, fetch_pubg_data, stats_url, pubg_key)
+
+    if status != 200 or not stats_data:
+        await ctx.send("❌ Не вдалося завантажити статистику матчів.")
+        return
+
+    try:
+        game_stats = stats_data['data']['attributes']['gameModeStats']
+    except:
+        await ctx.send("❌ Сталася помилка при розборі статистики.")
+        return
+
+    # Збираємо дані з усіх сквад-режимів (Squad TPP та Squad FPP)
+    modes = ['squad', 'squad-fpp']
+    wins, kills, rounds, top10s, damage = 0, 0, 0, 0, 0
+    found_data = False
+
+    for mode in modes:
+        if mode in game_stats:
+            mode_data = game_stats[mode]
+            if mode_data.get('roundsPlayed', 0) > 0:
+                rounds += mode_data.get('roundsPlayed', 0)
+                wins += mode_data.get('wins', 0)
+                kills += mode_data.get('kills', 0)
+                top10s += mode_data.get('top10s', 0)
+                damage += int(mode_data.get('damageDealt', 0))
+                found_data = True
+
+    if not found_data:
+        await ctx.send(f"📊 У гравця **{actual_name}** немає зіграних матчів у режимі Squad (FPP/TPP).")
+        return
+
+    # Рахуємо K/D та середні показники
+    kd = round(kills / max(rounds - wins, 1), 2)
+    avg_dmg = round(damage / max(rounds, 1), 1)
+    win_rate = round((wins / max(rounds, 1)) * 100, 1)
+
+    # 3. Будуємо красиву картку виводу статистики українською мовою
+    embed = discord.Embed(
+        title=f"🔥 СТАТИСТИКА ГРАВЦЯ PUBG: {actual_name} 🔥",
+        description=f"Платформа: **Steam** | Режим: **Squad (Lifetime)**",
+        color=0x00ffff
+    )
+    embed.add_field(name="Зіграно каток 🎮", value=f"{rounds}", inline=True)
+    embed.add_field(name="Перемоги (Топ-1) 🏆", value=f"{wins} ({win_rate}%)", inline=True)
+    embed.add_field(name="Попадання в Топ-10 🎯", value=f"{top10s}", inline=True)
+    
+    embed.add_field(name="Всього фрагів 💀", value=f"{kills}", inline=True)
+    embed.add_field(name="Рейтинг K/D 📈", value=f"**{kd}**", inline=True)
+    embed.add_field(name="Сер. урон за матч ⚔️", value=f"{avg_dmg}", inline=True)
+    
+    embed.set_footer(text=f"PUBG ID: {player_id}")
+    await ctx.send(embed=embed)
 
 # --- Альтернативний виклик фразою KAGE посмотри ---
 @bot.event
@@ -193,7 +205,7 @@ async def run_interview(channel, member):
             await channel.delete()
             return
             
-    await channel.send("🎉 **Дякуємо! Анкету успішно заповнено.**\nДані надіслані керівництву!")
+    await channel.send("🎉 **Дякуємо! Анкету успешно заповнено.**\nДані надіслані керівництву!")
     
     result_embed = discord.Embed(title=f"📋 НОВА АНКЕТА ВІД: {member.name}", color=0x00ff00)
     for q, a in zip(QUESTIONS, answers): 
@@ -203,7 +215,6 @@ async def run_interview(channel, member):
     if admin_channel: 
         await admin_channel.send(content="🔔 **Надійшла нова анкетна заявка GTA!**", embed=result_embed)
         
-    # Миттєве та чисте видалення каналу без зависань
     active_interviews.discard(member.id)
     try:
         await channel.delete(reason="Анкета успішно заповнена")
