@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw, ImageFont
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
+# Код веб-сервера для стабильной круглосуточной работы хостинга Render
 class WebServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -26,7 +27,7 @@ intents.members = True
 intents.voice_states = True 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- НАЛАШТУВАННЯ АНКЕТИ РЕКРУТИНГУ GTA ---
+# --- НАЛАШТУВАННЯ АНКЕТИ РЕКРУТИНГУ GTA (УКРАЇНСЬКОЮ) ---
 QUESTIONS = [
     "1. Як Ваше ім'я?",
     "2. Який Ваш статичний ID у грі?",
@@ -35,10 +36,13 @@ QUESTIONS = [
 ]
 active_interviews = set()
 
-# НАСТРОЙКА ID ДЛЯ РЕКРУТИНГУ (Вставьте свои три ID сервера)
-GTA_ROLE_ID = 1516860422613897216        
-TICKET_CATEGORY_ID = 1516860343874359367 
-ADMIN_LOG_CHANNEL_ID = 1516871322729447464 
+# =========================================================================
+# ⚠️ ОБОВ'ЯЗКОВО ВСТАВТЕ СВОЇ ТРИ ID НИЖЧЕ ЗАМІСТЬ СТАНДАРТНИХ ЦИФР:
+# =========================================================================
+GTA_ROLE_ID = 123456789012345678          # 1. Сюди вставте ID вашої ролі GTA
+TICKET_CATEGORY_ID = 123456789012345678   # 2. Сюди вставте ID вашої категорії для анкет
+ADMIN_LOG_CHANNEL_ID = 123456789012345678 # 3. Сюди вставте ID вашого каналу "керівництво"
+# =========================================================================
 
 @bot.event
 async def on_ready():
@@ -46,7 +50,7 @@ async def on_ready():
     if not update_banner_loop.is_running():
         update_banner_loop.start()
 
-# --- БЛОК СТАТИСТИКИ PUBG ---
+# --- БЛОК СТАТИСТИКИ PUBG (УНІВЕРСАЛЬНИЙ ТА НАДІЙНИЙ) ---
 @bot.command(name="stats")
 async def pubg_stats(ctx, *, player_name: str):
     pubg_key = os.environ.get('PUBG_TOKEN')
@@ -62,50 +66,65 @@ async def pubg_stats(ctx, *, player_name: str):
     }
 
     async with aiohttp.ClientSession() as session:
-        # 1. Шукаємо гравця за його нікнеймом у системі Steam
+        # 1. Шукаємо гравця за нікнеймом у Steam
         player_url = f"https://pubg.com[playerNames]={player_name}"
-        async with session.get(player_url, headers=headers) as resp:
-            if resp.status != 200:
-                await ctx.send(f"❌ Гравця з нікнеймом **{player_name}** не знайдено в Steam. Перевірте регістр букв!")
-                return
-            player_data = await resp.json()
-            
         try:
-            player_id = player_data['data'][0]['id']
-            actual_name = player_data['data'][0]['attributes']['name']
-        except:
-            await ctx.send("❌ Сталася помилка при зчитуванні даних гравця.")
-            return
-
-        # 2. Запитуємо статистику
-        stats_url = f"https://pubg.com{player_id}/seasons/lifetime"
-        async with session.get(stats_url, headers=headers) as resp:
-            if resp.status != 200:
-                await ctx.send("❌ Не вдалося завантажити статистику для цього гравця.")
-                return
-            stats_data = await resp.json()
-
-        try:
-            # Беремо дані для режиму Squad FPP
-            squad_stats = stats_data['data']['attributes']['gameModeStats']['squad-fpp']
-            
-            wins = squad_stats.get('wins', 0)
-            kills = squad_stats.get('kills', 0)
-            rounds = squad_stats.get('roundsPlayed', 0)
-            top10s = squad_stats.get('top10s', 0)
-            damage = int(squad_stats.get('damageDealt', 0))
-            
-            kd = round(kills / max(rounds - wins, 1), 2)
-            avg_dmg = round(damage / max(rounds, 1), 1)
-            win_rate = round((wins / max(rounds, 1)) * 100, 1)
+            async with session.get(player_url, headers=headers) as resp:
+                if resp.status == 401:
+                    await ctx.send("❌ Помилка авторизації: Перевірте, чи правильно скопійовано PUBG_TOKEN на Render!")
+                    return
+                if resp.status != 200:
+                    await ctx.send(f"❌ Гравця з нікнеймом **{player_name}** не знайдено в Steam. Перевірте регістр букв!")
+                    return
+                player_data = await resp.json()
+                player_id = player_data['data']['id']
+                actual_name = player_data['data']['attributes']['name']
         except Exception as e:
-            await ctx.send("📊 У цього гравця немає зіграних матчів у режимі Squad за поточний період.")
+            await ctx.send(f"❌ Помилка пошуку гравця: {e}")
             return
 
-        # 3. Будуємо картку виводу статистики українською мовою
+        # 2. Запитуємо загальну статистику за весь час (Lifetime)
+        stats_url = f"https://pubg.com{player_id}/seasons/lifetime"
+        try:
+            async with session.get(stats_url, headers=headers) as resp:
+                if resp.status != 200:
+                    await ctx.send("❌ Не вдалося завантажити статистику матчів.")
+                    return
+                stats_data = await resp.json()
+                game_stats = stats_data['data']['attributes']['gameModeStats']
+        except Exception as e:
+            await ctx.send(f"❌ Помилка завантаження сезону: {e}")
+            return
+
+        # Збираємо дані з усіх сквад-режимів (Squad TPP та Squad FPP)
+        modes = ['squad', 'squad-fpp']
+        wins, kills, rounds, top10s, damage = 0, 0, 0, 0, 0
+        found_data = False
+
+        for mode in modes:
+            if mode in game_stats:
+                mode_data = game_stats[mode]
+                if mode_data.get('roundsPlayed', 0) > 0:
+                    rounds += mode_data.get('roundsPlayed', 0)
+                    wins += mode_data.get('wins', 0)
+                    kills += mode_data.get('kills', 0)
+                    top10s += mode_data.get('top10s', 0)
+                    damage += int(mode_data.get('damageDealt', 0))
+                    found_data = True
+
+        if not found_data:
+            await ctx.send(f"📊 У гравця **{actual_name}** немає зіграних матчів у режимі Squad (FPP/TPP).")
+            return
+
+        # Рахуємо K/D та середні показники
+        kd = round(kills / max(rounds - wins, 1), 2)
+        avg_dmg = round(damage / max(rounds, 1), 1)
+        win_rate = round((wins / max(rounds, 1)) * 100, 1)
+
+        # 3. Будуємо красиву картку виводу статистики українською мовою
         embed = discord.Embed(
             title=f"🔥 СТАТИСТИКА ГРАВЦЯ PUBG: {actual_name} 🔥",
-            description=f"Платформа: **Steam** | Режим: **Squad FPP**",
+            description=f"Платформа: **Steam** | Режим: **Squad (Lifetime)**",
             color=0x00ffff
         )
         embed.add_field(name="Зіграно каток 🎮", value=f"{rounds}", inline=True)
@@ -119,7 +138,7 @@ async def pubg_stats(ctx, *, player_name: str):
         embed.set_footer(text=f"PUBG ID: {player_id}")
         await ctx.send(embed=embed)
 
-# --- Альтернативний виклик фразою KAGE ---
+# --- Альтернативний виклик фразою KAGE посмотри ---
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -135,7 +154,7 @@ async def on_message(message):
             
     await bot.process_commands(message)
 
-# --- АВТОМАТИЧНИЙ РЕКРУТИНГ ---
+# --- АВТОМАТИЧНИЙ РЕКРУТИНГ GTA ПРИ НАДАННІ РОЛІ ---
 @bot.event
 async def on_member_update(before, after):
     gta_role = discord.utils.get(after.guild.roles, id=GTA_ROLE_ID)
@@ -144,15 +163,18 @@ async def on_member_update(before, after):
         active_interviews.add(after.id)
         guild = after.guild
         category = discord.utils.get(guild.categories, id=TICKET_CATEGORY_ID)
+        
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
             after: discord.PermissionOverwrite(read_messages=True, send_messages=True),
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
+        
         ticket_channel = await guild.create_text_channel(name=f"анкета-{after.name}", category=category, overwrites=overwrites)
         embed_rules = discord.Embed(
             title="⚔️ ВІТАЄМО У СІМ'Ї KAGE | РЕКРУТИНГ ⚔️",
-            description=f"Привіт, {after.mention}! Ти обрав роль гравця GTA.\nЗараз бот проведе автоматичне опитування. Будь ласка, відповідай на кожне питання одним повідомленням. Починаємо!",
+            description=f"Привіт, {after.mention}! Ти обрав роль гравця GTA.\n"
+                        f"Зараз бот проведе автоматичне опитування. Будь ласка, відповідай на кожне питання одним повідомленням. Починаємо!",
             color=0x00ffff
         )
         await ticket_channel.send(embed=embed_rules)
@@ -170,17 +192,25 @@ async def run_interview(channel, member):
             active_interviews.discard(member.id)
             await channel.delete()
             return
-    await channel.send("🎉 **Дякуємо! Анкету успішно заповнено.**\nКанал автоматично закриється через 10 секунд.")
+            
+    await channel.send("🎉 **Дякуємо! Анкету успішно заповнено.**\nДані надіслані керівництву!")
+    
     result_embed = discord.Embed(title=f"📋 НОВА АНКЕТА ВІД: {member.name}", color=0x00ff00)
-    for q, a in zip(QUESTIONS, answers): result_embed.add_field(name=q, value=a, inline=False)
+    for q, a in zip(QUESTIONS, answers): 
+        result_embed.add_field(name=q, value=a, inline=False)
+        
     admin_channel = bot.get_channel(ADMIN_LOG_CHANNEL_ID)
-    if admin_channel: await admin_channel.send(content="🔔 **Надійшла нова анкетна заявка GTA!**", embed=result_embed)
+    if admin_channel: 
+        await admin_channel.send(content="🔔 **Надійшла нова анкетна заявка GTA!**", embed=result_embed)
+        
+    # Миттєве та чисте видалення каналу без зависань
     active_interviews.discard(member.id)
-    await discord.utils.sleep_until(discord.utils.utcnow() + discord.utils.Duration(seconds=10))
-    try: await channel.delete()
-    except: pass
+    try:
+        await channel.delete(reason="Анкета успішно заповнена")
+    except:
+        pass
 
-# --- АВТОМАТИЧНИЙ БАННЕР ---
+# --- АВТОМАТИЧНИЙ БАННЕР (КООРДИНАТИ ТА МАСШТАБ ЗБЕРЕЖЕНО) ---
 @tasks.loop(minutes=3)
 async def update_banner_loop():
     GUILD_ID = 1489687778710130728 
@@ -197,27 +227,10 @@ async def update_banner_loop():
         voice_members = 0
         if full_guild:
             for channel in full_guild.voice_channels: voice_members += len(channel.members)
+            
         icon_user, icon_voice = "\uf0c0", "\uf130"
         num_user, num_voice = f"{total_members}", f"{voice_members}"
+        
         try: font_icons = ImageFont.truetype('iconfont.ttf', size=80)
         except: font_icons = ImageFont.load_default()
         try: font_nums = ImageFont.truetype('myfont.ttf', size=80)
-        except: font_nums = ImageFont.load_default()
-        draw.text((160, 390), icon_user, fill=(255, 255, 255), font=font_icons)
-        draw.text((280, 390), num_user, fill=(255, 255, 255), font=font_nums)
-        draw.text((165, 520), icon_voice, fill=(255, 255, 255), font=font_icons)
-        draw.text((280, 520), num_voice, fill=(255, 255, 255), font=font_nums)
-        img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='PNG')
-        img_byte_arr.seek(0)
-        await guild.edit(banner=img_byte_arr.read())
-    except: pass
-
-@bot.command()
-async def forcebanner(ctx):
-    await update_banner_loop()
-    await ctx.send("Готово!")
-
-token = os.environ.get('DISCORD_TOKEN')
-bot.run(token)
-bot.run(token)
