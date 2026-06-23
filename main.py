@@ -42,7 +42,7 @@ active_interviews = set()
 # =========================================================================
 # ⚠️ ОБОВ'ЯЗКОВО ВСТАВТЕ СВОЇ ТРИ ID НИЖЧЕ ЗАМІСТЬ СТАНДАРТНИХ ЦИФР:
 # =========================================================================
-GTA_ROLE_ID = 1516860422613897216         # 1. Сюди вставте ID вашої ролі GTA
+GTA_ROLE_ID = 1516860422613897216          # 1. Сюди вставте ID вашої ролі GTA
 TICKET_CATEGORY_ID = 1516860343874359367   # 2. Сюди вставте ID вашої категорії для анкет
 ADMIN_LOG_CHANNEL_ID = 1516871322729447464 # 3. Сюди вставте ID вашого каналу "керівництво"
 # =========================================================================
@@ -76,7 +76,6 @@ async def pubg_stats(ctx, *, player_name: str):
 
     await ctx.send(f"🔍 Шукаю статистику гравця **{player_name}** в базі PUBG Steam...")
 
-    # Безпечно кодуємо нікнейм для інтернет-посилання (щоб уникнути помилки InvalidURL)
     encoded_name = urllib.parse.quote(player_name)
     player_url = f"https://pubg.com[playerNames]={encoded_name}"
     
@@ -84,7 +83,7 @@ async def pubg_stats(ctx, *, player_name: str):
     status, player_data = await loop.run_in_executor(None, fetch_pubg_data, player_url, pubg_key)
 
     if status == 401:
-        await ctx.send("❌ Помилка авторизації: Перевірте, чи правильно скопійовано PUBG_TOKEN на Render!")
+        await ctx.send("❌ Помилка authorization: Перевірте, чи правильно скопійовано PUBG_TOKEN на Render!")
         return
     if status != 200 or not player_data:
         await ctx.send(f"❌ Гравця з нікнеймом **{player_name}** не знайдено в Steam. Перевірте регістр букв!")
@@ -97,7 +96,6 @@ async def pubg_stats(ctx, *, player_name: str):
         await ctx.send("❌ Сталася помилка при зчитуванні ID гравця.")
         return
 
-    # Запитуємо статистику Lifetime
     stats_url = f"https://pubg.com{player_id}/seasons/lifetime"
     status, stats_data = await loop.run_in_executor(None, fetch_pubg_data, stats_url, pubg_key)
 
@@ -215,15 +213,14 @@ async def run_interview(channel, member):
     try: await channel.delete()
     except: pass
 
-# --- АВТОМАТИЧНИЙ БАННЕР (СТРУКТУРУ ТА ШРИФТИ ПОВНІСТЮ ВИПРАВЛЕНО) ---
+# --- АВТОМАТИЧНИЙ БАННЕР ---
 @tasks.loop(minutes=3)
 async def update_banner_loop():
     GUILD_ID = 1489687778710130728 
     try:
         guild = await bot.fetch_guild(GUILD_ID)
         full_guild = bot.get_guild(GUILD_ID)
-        if full_guild: total_members = full_guild.member_count
-        else: total_members = guild.member_count
+        total_members = full_guild.member_count if full_guild else guild.member_count
     except: 
         return
     try:
@@ -245,3 +242,8 @@ async def update_banner_loop():
         
         draw.text((160, 390), icon_user, fill=(255, 255, 255), font=font_icons)
         draw.text((280, 390), num_user, fill=(255, 255, 255), font=font_nums)
+        draw.text((165, 520), icon_voice, fill=(255, 255, 255), font=font_icons)
+        draw.text((280, 520), num_voice, fill=(255, 255, 255), font=font_nums)
+        
+        img_byte_arr = io.BytesIO()
+        image.save(img_byte_arr, format='PNG')
