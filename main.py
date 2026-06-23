@@ -160,6 +160,7 @@ async def on_message(message):
     if text.startswith("kage посмотри"):
         name_to_search = message.content[13:].strip()
         if name_to_search:
+            # ДОБАВЛЕНО AWAIT: Теперь контекст сообщения считывается моментально и без ошибок
             ctx = await bot.get_context(message)
             await pubg_stats(ctx, player_name=name_to_search)
             return
