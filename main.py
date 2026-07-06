@@ -125,19 +125,20 @@ async def update_banner_loop():
         icon_user, icon_voice = "\uf0c0", "\uf130"
         num_user, num_voice = f"{total_members}", f"{voice_members}"
         
-        try: font_icons = ImageFont.truetype('iconfont.ttf', size=70)
+        # УВЕЛИЧИВАЕМ МАСШТАБ: Делаем шрифт огромным (размер 95) под этот фон
+        try: font_icons = ImageFont.truetype('iconfont.ttf', size=95)
         except: font_icons = ImageFont.load_default()
-        try: font_nums = ImageFont.truetype('myfont.ttf', size=70)
+        try: font_nums = ImageFont.truetype('myfont.ttf', size=95)
         except: font_nums = ImageFont.load_default()
         
-        # НОВЫЕ КООРДИНАТЫ (Смещаем текст в свободную левую часть, делаем красивый отступ)
-        # Строка 1: Участники (Иконка на X=100, Цифры на X=200, Высота Y=180)
-        draw.text((100, 180), icon_user, fill=(255, 255, 255), font=font_icons)
-        draw.text((200, 180), num_user, fill=(255, 255, 255), font=font_nums)
+        # ОТСТУПЫ: Отодвигаем от левого края (X=140 и 270) и плавно опускаем вниз (Y=260 и 390)
+        # Строка 1: Участники
+        draw.text((140, 260), icon_user, fill=(255, 255, 255), font=font_icons)
+        draw.text((270, 260), num_user, fill=(255, 255, 255), font=font_nums)
 
-        # Строка 2: Голосовой онлайн (Иконка на X=105, Цифры на X=200, Высота Y=280)
-        draw.text((105, 280), icon_voice, fill=(255, 255, 255), font=font_icons)
-        draw.text((200, 280), num_voice, fill=(255, 255, 255), font=font_nums)
+        # Строка 2: Голосовой онлайн
+        draw.text((145, 390), icon_voice, fill=(255, 255, 255), font=font_icons)
+        draw.text((270, 390), num_voice, fill=(255, 255, 255), font=font_nums)
         
         img_byte_arr = io.BytesIO()
         image.save(img_byte_arr, format='PNG')
