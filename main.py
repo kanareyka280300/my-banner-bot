@@ -131,14 +131,14 @@ async def update_banner_loop():
         try: font_nums = ImageFont.truetype('myfont.ttf', size=95)
         except: font_nums = ImageFont.load_default()
         
-        # ОТСТУПЫ: Отодвигаем от левого края (X=140 и 270) и плавно опускаем вниз (Y=260 и 390)
+        # ИДЕАЛЬНОЕ ЦЕНТРИРОВАНИЕ ПІД САМУРАЯ: Сдвинули X вправо и опустили Y ниже
         # Строка 1: Участники
-        draw.text((140, 260), icon_user, fill=(255, 255, 255), font=font_icons)
-        draw.text((270, 260), num_user, fill=(255, 255, 255), font=font_nums)
+        draw.text((220, 380), icon_user, fill=(255, 255, 255), font=font_icons)
+        draw.text((350, 380), num_user, fill=(255, 255, 255), font=font_nums)
 
         # Строка 2: Голосовой онлайн
-        draw.text((145, 390), icon_voice, fill=(255, 255, 255), font=font_icons)
-        draw.text((270, 390), num_voice, fill=(255, 255, 255), font=font_nums)
+        draw.text((225, 510), icon_voice, fill=(255, 255, 255), font=font_icons)
+        draw.text((350, 510), num_voice, fill=(255, 255, 255), font=font_nums)
         
         img_byte_arr = io.BytesIO()
         image.save(img_byte_arr, format='PNG')
