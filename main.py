@@ -2,11 +2,16 @@ import discord
 from discord.ext import commands, tasks
 import io
 import os
+import json
+import urllib.request
+import urllib.parse
+import asyncio
 from PIL import Image, ImageDraw, ImageFont
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
+from datetime import datetime, timezone
 
-# Код веб-сервера для круглосуточной работы хостинга Render
+# Код веб-сервера для стабільної цілодобової роботи хостинга Render
 class WebServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -24,7 +29,12 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True 
 intents.voice_states = True 
+intents.invites = True  # ДОЗВОЛЯЄ БОТУ БАЧИТИ ПОСИЛАННЯ
+
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Словник для кешування інваїтів у пам'яті бота
+invites_cache = {}
 
 # --- НАЛАШТУВАННЯ АНКЕТИ РЕКРУТИНГУ GTA ---
 QUESTIONS = [
@@ -36,20 +46,109 @@ QUESTIONS = [
 active_interviews = set()
 
 # =========================================================================
-# ⚠️ ОБОВ'ЯЗКОВО ПЕРЕВІР СВОЇ ТРИ ID НИЖЧЕ:
+# ⚠️ НАЛАШТУВАННЯ ID КАНАЛІВ ТА РОЛЕЙ (ТВІЙ НОВИЙ КАНАЛ ВЖЕ ТУТ):
 # =========================================================================
-GTA_ROLE_ID = 1516860422613897216          
-TICKET_CATEGORY_ID = 1516860343874359367   
-ADMIN_LOG_CHANNEL_ID = 1516871322729447464 
+GTA_ROLE_ID = 1516860422613897216          # ID ролі GTA
+TICKET_CATEGORY_ID = 1489687779960033381   # ID категорії для анкет рекрутингу
+ADMIN_LOG_CHANNEL_ID = 1524836308332187699 # ID каналу "керівництво" для рекрутингу
+
+# ВАШ НОВИЙ КАНАЛ ДЛЯ ЗВІТІВ ПРО ІНВАЙТИ ТА АНТИ-ТВІНКІВ:
+SECURITY_LOG_CHANNEL_ID = 1524853896822915173
 # =========================================================================
 
 @bot.event
 async def on_ready():
-    print(f'Бот {bot.user.name} успішно запущений і готовий!')
+    print(f'Бот {bot.user.name} успішно запущений і готовий до роботи!')
+    
+    # Завантажуємо інвайти сервера в пам'ять бота при старті
+    for guild in bot.guilds:
+        try:
+            invites_cache[guild.id] = await guild.invites()
+        except:
+            pass
+            
     if not update_banner_loop.is_running():
         update_banner_loop.start()
 
-# --- АВТОМАТИЧНИЙ РЕКРУТИНГ GTA ПРИ НАДАННІ РОЛІ ---
+# --- ФУНКЦІЯ ГЛИБОКОЇ ПЕРЕВІРКИ НОВИХ УЧАСНИКІВ ---
+@bot.event
+async def on_member_join(member):
+    guild = member.guild
+    # Спрямовуємо повідомлення саме у твій новий вказаний канал
+    security_channel = bot.get_channel(SECURITY_LOG_CHANNEL_ID)
+    
+    inviter_text = "Не вдалося визначити (можливо, офіційне посилання Discord або додано адміном)"
+    invite_code_text = "Невідомо"
+    invite_uses_text = "Невідомо"
+    invite_used = None
+    
+    # 1. Отримуємо свіжий список інваїтів із сервера
+    try:
+        current_invites = await guild.invites()
+    except:
+        return 
+
+    # Шукаємо яке посилання спрацювало
+    if guild.id in invites_cache:
+        for old_inv in invites_cache[guild.id]:
+            for new_inv in current_invites:
+                if old_inv.code == new_inv.code and new_inv.uses > old_inv.uses:
+                    invite_used = new_inv
+                    inviter_text = f"{new_inv.inviter.mention} (`{new_inv.inviter.name}`)"
+                    invite_code_text = f"`{new_inv.code}`"
+                    invite_uses_text = f"`{new_inv.uses}` користувачів"
+                    break
+            if invite_used:
+                break
+
+    if not invite_used and guild.vanity_url_code:
+        inviter_text = "Офіційне кастомне посилання сервера (Vanity URL)"
+        invite_code_text = f"`{guild.vanity_url_code}`"
+
+    # Оновлюємо кеш у пам'яті для наступного входу
+    invites_cache[guild.id] = current_invites
+
+    # 2. Рахуємо точний вік акаунта новичка
+    created_at = member.created_at.strftime("%d.%m.%Y %H:%M")
+    now = datetime.now(timezone.utc)
+    account_age_days = (now - member.created_at).days
+
+    # Визначаємо рівень небезпеки (якщо акаунту менше 14 днів — б'ємо на сполох)
+    if account_age_days <= 14:
+        security_status = f"🚨 **ПІДОЗРА НА ТВІНК!** Акаунту всього **{account_age_days} днів**!"
+        embed_color = 0xff0000 # Червоний колір тривоги
+    else:
+        security_status = f"✅ Надійний акаунт (Вік: {account_age_days} днів)"
+        embed_color = 0x00ff00 # Зелений спокійний колір
+
+    # 3. Надсилаємо повний звіт у новий канал
+    if security_channel:
+        embed = discord.Embed(
+            title="🔍 ДЕТАЛЬНИЙ ЗВІТ ПРО НОВОГО УЧАСНИКА",
+            description=f"Користувач {member.mention} приєднався до спільноти KAGE.",
+            color=embed_color
+        )
+        embed.add_field(name="👤 Учасник:", value=f"• Нік: `{member.name}`\n• ID: `{member.id}`", inline=False)
+        embed.add_field(name="📅 Дата створення акаунта:", value=f"• Створено: `{created_at}`\n• Статус: {security_status}", inline=False)
+        embed.add_field(name="🔗 Хто запросив за посиланнями:", value=f"• Автор: {inviter_text}", inline=False)
+        embed.add_field(name="📊 Статистика посилання:", value=f"• Код: {invite_code_text}\n• Всього зайшло за ним: {invite_uses_text}", inline=False)
+        
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text=f"KAGE Security System • {datetime.now().strftime('%H:%M:%S')}")
+        await security_channel.send(embed=embed)
+
+# Оновлення кешу при створенні/видаленні посилань адмінами
+@bot.event
+async def on_invite_create(invite):
+    try: invites_cache[invite.guild.id] = await invite.guild.invites()
+    except: pass
+
+@bot.event
+async def on_invite_delete(invite):
+    try: invites_cache[invite.guild.id] = await invite.guild.invites()
+    except: pass
+
+# --- АВТОМАТИЧНЕ СТВОРЕННЯ КАНАЛУ РЕКРУТИНГУ GTA ---
 @bot.event
 async def on_member_update(before, after):
     gta_role = discord.utils.get(after.guild.roles, id=GTA_ROLE_ID)
@@ -89,22 +188,15 @@ async def run_interview(channel, member):
             return
             
     await channel.send("🎉 **Дякуємо! Анкету успішно заповнено.**\nДані надіслані керівництву!")
-    
     result_embed = discord.Embed(title=f"📋 НОВА АНКЕТА ВІД: {member.name}", color=0x00ff00)
-    for q, a in zip(QUESTIONS, answers): 
-        result_embed.add_field(name=q, value=a, inline=False)
-        
+    for q, a in zip(QUESTIONS, answers): result_embed.add_field(name=q, value=a, inline=False)
     admin_channel = bot.get_channel(ADMIN_LOG_CHANNEL_ID)
-    if admin_channel: 
-        await admin_channel.send(content="🔔 **Надійшла нова анкетна заявка GTA!**", embed=result_embed)
-        
+    if admin_channel: await admin_channel.send(content="🔔 **Надійшла нова анкетна заявка GTA!**", embed=result_embed)
     active_interviews.discard(member.id)
-    try:
-        await channel.delete(reason="Анкета успішно заповнена")
-    except:
-        pass
+    try: await channel.delete(reason="Анкета успішно заповнена")
+    except: pass
 
-# --- АВТОМАТИЧНИЙ БАННЕР (НОВІ КОРДИНАТИ ПІД САМУРАЯ) ---
+# --- АВТОМАТИЧНИЙ БАННЕР ---
 @tasks.loop(minutes=3)
 async def update_banner_loop():
     GUILD_ID = 1489687778710130728 
@@ -114,7 +206,6 @@ async def update_banner_loop():
         total_members = full_guild.member_count if full_guild else guild.member_count
     except: return
     try:
-        # Проверяем файлы картинок (ищет background.png или фон.png)
         try: image = Image.open('background.png')
         except: image = Image.open('фон.png')
         draw = ImageDraw.Draw(image)
@@ -125,18 +216,13 @@ async def update_banner_loop():
         icon_user, icon_voice = "\uf0c0", "\uf130"
         num_user, num_voice = f"{total_members}", f"{voice_members}"
         
-        # УВЕЛИЧИВАЕМ МАСШТАБ: Делаем шрифт огромным (размер 95) под этот фон
         try: font_icons = ImageFont.truetype('iconfont.ttf', size=95)
         except: font_icons = ImageFont.load_default()
         try: font_nums = ImageFont.truetype('myfont.ttf', size=95)
         except: font_nums = ImageFont.load_default()
         
-        # ИДЕАЛЬНОЕ ЦЕНТРИРОВАНИЕ ПІД САМУРАЯ: Сдвинули X вправо и опустили Y ниже
-        # Строка 1: Участники
         draw.text((220, 380), icon_user, fill=(255, 255, 255), font=font_icons)
         draw.text((350, 380), num_user, fill=(255, 255, 255), font=font_nums)
-
-        # Строка 2: Голосовой онлайн
         draw.text((225, 510), icon_voice, fill=(255, 255, 255), font=font_icons)
         draw.text((350, 510), num_voice, fill=(255, 255, 255), font=font_nums)
         
