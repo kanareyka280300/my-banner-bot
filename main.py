@@ -2,10 +2,11 @@ import discord
 from discord.ext import commands, tasks
 import io
 import os
+import asyncio
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timezone
 
-# ВКЛЮЧАЕМ ВСЕ ИНТЕНТЫ
+# ВКЛЮЧАЕМ ВСЕ ИНТЕНТЫ ДЛЯ ЛОГИРОВАНИЯ
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -23,19 +24,20 @@ QUESTIONS = [
 active_interviews = set()
 
 # =========================================================================
-# ⚠️ ВПИШИТЕ СЮДА ВАШИ РЕАЛЬНЫЕ ID КАНАЛОВ КАНАЛОВ:
+# ⚠️ НАЛАШТУВАННЯ ID КАНАЛІВ ДЛЯ ТВОЇХ СЕМИ ПАПОК ЛОГІВ:
 # =========================================================================
 GUILD_ID = 1489687778710130728             # ID твого сервера KAGE
 GTA_ROLE_ID = 1516860422613897216          # ID ролі GTA
 TICKET_CATEGORY_ID = 1489687779960033381   # ID категорії для анкет
 
-LOG_BANS_ID = 148974351034404865              # 1. Папка Бан
+# Твої нові канали під кожну вкладку (впиши сюди свої ID замість цифр нижче):
+LOG_BANS_ID = 1489741516971966655              # 1. Папка Бан
 SECURITY_LOG_CHANNEL_ID = 1524853896822915173 # 2. Зайшов / Вийшов (+ Твинки)
-LOG_ROLES_ID = 148974354184112208             # 3. Папка Ролі
-LOG_NICKNAMES_ID = 148974355203325453         # 4. Папка Нікнейми
-LOG_MESSAGES_ID = 148974170532231433          # 5. Папка Повідомлення
-LOG_VOICE_ID = 148974136931238320             # 6. Папка Войс переміщення
-LOG_SERVER_GENERAL_ID = 1489743537278212131     # 7. Папка Сервер Загальне
+LOG_ROLES_ID = 1489741698841182260             # 3. Папка Ролі
+LOG_NICKNAMES_ID = 1489741658487656529        # 4. Папка Нікнейми
+LOG_MESSAGES_ID = 1489741740180242492          # 5. Папка Повідомлення
+LOG_VOICE_ID = 1489741808953983036             # 6. Папка Войс переміщення
+LOG_SERVER_GENERAL_ID = 1489742637278822531     # 7. Папка Сервер Загальне
 
 ADMIN_LOG_CHANNEL_ID = 1524836308332187699     # ID каналу "керівництво" для анкет
 # =========================================================================
@@ -44,12 +46,15 @@ ADMIN_LOG_CHANNEL_ID = 1524836308332187699     # ID каналу "керівни
 async def on_ready():
     print(f'Бот {bot.user.name} успішно запущений і готовий до роботи!')
     for guild in bot.guilds:
-        try: invites_cache[guild.id] = await guild.invites()
-        except: pass
+        try:
+            invites_cache[guild.id] = await guild.invites()
+        except:
+            pass
+            
     if not update_banner_loop.is_running():
         update_banner_loop.start()
 
-# --- 2. ЗАШЕЛ НА СЕРВЕР ---
+# --- 2. ПАПКА ЗАЙШОВ НА СЕРВЕР ---
 @bot.event
 async def on_member_join(member):
     channel = bot.get_channel(SECURITY_LOG_CHANNEL_ID)
@@ -58,7 +63,7 @@ async def on_member_join(member):
     embed.description = f"Користувач {member.mention} (`{member.name}`) приєднався до спільноти KAGE.\nID: `{member.id}`"
     await channel.send(embed=embed)
 
-# --- 2. ВЫШЕЛ С СЕРВЕРА ---
+# --- 2. ПАПКА ВИЙШОВ З СЕРВЕРА ---
 @bot.event
 async def on_member_remove(member):
     channel = bot.get_channel(SECURITY_LOG_CHANNEL_ID)
@@ -76,19 +81,19 @@ async def on_member_ban(guild, user):
     embed.description = f"Користувач {user.mention} (`{user.name}`) був заблокований на сервері.\nID: `{user.id}`"
     await channel.send(embed=embed)
 
-# --- 5. УДАЛЕНИЕ СООБЩЕНИЯ (ПРОСТОЙ ВАРИАНТ) ---
+# --- 5. ПАПКА ПОВІДОМЛЕННЯ (ВИДАЛЕННЯ) ---
 @bot.event
 async def on_message_delete(message):
     if message.author.bot: return
     channel = bot.get_channel(LOG_MESSAGES_ID)
     if not channel: return
-    embed = discord.Embed(title="🗑️ П ПОВІДОМЛЕННЯ ВИДАЛЕНО", color=0xe74c3c)
+    embed = discord.Embed(title="🗑️ ПОВІДОМЛЕННЯ ВИДАЛЕНО", color=0xe74c3c)
     embed.add_field(name="Автор:", value=message.author.mention, inline=True)
     embed.add_field(name="Канал:", value=message.channel.mention, inline=True)
     embed.add_field(name="Текст:", value=f"```\n{message.content if message.content else 'Текст відсутній'}\n```", inline=False)
     await channel.send(embed=embed)
 
-# --- 5. РЕДАКТИРОВАНИЕ СООБЩЕНИЯ ---
+# --- 5. ПАПКА ПОВІДОМЛЕННЯ (РЕДАГУВАННЯ) ---
 @bot.event
 async def on_message_edit(before, after):
     if before.author.bot or before.content == after.content: return
@@ -100,7 +105,7 @@ async def on_message_edit(before, after):
     embed.add_field(name="Стало:", value=f"```\n{after.content}\n```", inline=False)
     await channel.send(embed=embed)
 
-# --- 6. ВОЙС ПЕРЕМЕЩЕНИЯ (ПРОСТОЙ ВАРИАНТ) ---
+# --- 6. ПАПКА ВОЙС ПЕРЕМІЩЕННЯ ---
 @bot.event
 async def on_voice_state_update(member, before, after):
     channel = bot.get_channel(LOG_VOICE_ID)
@@ -140,7 +145,7 @@ async def on_member_update(before, after):
             await ticket_channel.send(embed=embed_rules)
             bot.loop.create_task(run_interview(ticket_channel, after))
 
-    # Роли
+    # Зміна ролей
     if before.roles != after.roles:
         ch = bot.get_channel(LOG_ROLES_ID)
         if ch:
@@ -150,7 +155,7 @@ async def on_member_update(before, after):
             embed.description = f"Учасник: {after.mention}\n🟢 Додано: {', '.join(added) if added else '—'}\n🔴 Вилучено: {', '.join(rem) if rem else '—'}"
             await ch.send(embed=embed)
 
-    # Никнеймы
+    # Зміна нікнеймів
     if before.nick != after.nick or before.name != after.name:
         ch = bot.get_channel(LOG_NICKNAMES_ID)
         if ch:
@@ -161,7 +166,7 @@ async def on_member_update(before, after):
                 embed.description = f"Користувач: {after.mention}\n❌ Було: `{old}`\n✅ Стало: `{new}`"
                 await ch.send(embed=embed)
 
-# --- АНКЕТЫ ---
+# --- СИСТЕМА АНКЕТУВАННЯ ---
 async def run_interview(channel, member):
     answers = []
     def check(m): return m.author == member and m.channel == channel
@@ -183,34 +188,37 @@ async def run_interview(channel, member):
     try: await channel.delete()
     except: pass
 
-# --- БАННЕР ---
+# --- БЕЗПЕЧНИЙ БАННЕР ---
 @tasks.loop(minutes=3)
 async def update_banner_loop():
     try:
         guild = await bot.fetch_guild(GUILD_ID)
         full_guild = bot.get_guild(GUILD_ID)
         total_members = full_guild.member_count if full_guild else guild.member_count
-    except: return
+    except: 
+        return
     try:
-        try: image = Image.open('background.png')
+        try: 
+            image = Image.open('background.png')
         except:
-            try: image = Image.open('фон.png')
-            except: return
+            try: 
+                image = Image.open('фон.png')
+            except: 
+                return
         draw = ImageDraw.Draw(image)
         voice_members = 0
         if full_guild:
-            for channel in full_guild.voice_channels: voice_members += len(channel.members)
+            for channel in full_guild.voice_channels: 
+                voice_members += len(channel.members)
         icon_user, icon_voice = "\uf0c0", "\uf130"
         num_user, num_voice = f"{total_members}", f"{voice_members}"
-        try: font_icons = ImageFont.truetype('iconfont.ttf', size=95)
-        except: font_icons = ImageFont.load_default()
-        try: font_nums = ImageFont.truetype('myfont.ttf', size=95)
-        except: font_nums = ImageFont.load_default()
+        try: 
+            font_icons = ImageFont.truetype('iconfont.ttf', size=95)
+        except: 
+            font_icons = ImageFont.load_default()
+        try: 
+            font_nums = ImageFont.truetype('myfont.ttf', size=95)
+        except: 
+            font_nums = ImageFont.load_default()
         draw.text((220, 380), icon_user, fill=(255, 255, 255), font=font_icons)
         draw.text((350, 380), num_user, fill=(255, 255, 255), font=font_nums)
-        draw.text((225, 510), icon_voice, fill=(255, 255, 255), font=font_icons)
-        draw.text((350, 510), num_voice, fill=(255, 255, 255), font=font_nums)
-        img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='PNG')
-        img_byte_arr.seek(0)
-        await guild.edit(banner=img_byte_arr.read())
