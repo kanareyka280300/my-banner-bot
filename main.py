@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 from datetime import datetime, timezone
 
-# Код веб-сервера для стабільної цілодобової роботи хостинга Render
+# Код веб-сервера для стабільної цілодобової роботи хостинга
 class WebServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -25,16 +25,19 @@ def run_web_server():
 
 threading.Thread(target=run_web_server, daemon=True).start()
 
+# ВКЛЮЧАЕМ ВСЕ НЕОБХОДИМЫЕ ИНТЕНТЫ ДЛЯ ЛОГИРОВАНИЯ
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True 
 intents.voice_states = True 
-intents.invites = True  # ДОЗВОЛЯЄ БОТУ БАЧИТИ ПОСИЛАННЯ
+intents.invites = True  
+intents.moderation = True # Для отслеживания банов
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Словник для кешування інваїтів у пам'яті бота
+# Словники для кешування
 invites_cache = {}
+member_inviters = {} # Память: кто кого пригласил (чтобы логировать при выходе)
 
 # --- НАЛАШТУВАННЯ АНКЕТИ РЕКРУТИНГУ GTA ---
 QUESTIONS = [
@@ -46,14 +49,22 @@ QUESTIONS = [
 active_interviews = set()
 
 # =========================================================================
-# ⚠️ НАЛАШТУВАННЯ ID КАНАЛІВ ТА РОЛЕЙ (ТВІЙ НОВИЙ КАНАЛ ВЖЕ ТУТ):
+# ⚠️ НАСТРОЙКА ID КАНАЛОВ ДЛЯ ВАШИХ СЕМИ ПАПОК ЛОГОВ:
 # =========================================================================
-GTA_ROLE_ID = 1516860422613897216          # ID ролі GTA
-TICKET_CATEGORY_ID = 1489687779960033381   # ID категорії для анкет рекрутингу
-ADMIN_LOG_CHANNEL_ID = 1524836308332187699 # ID каналу "керівництво" для рекрутингу
+GUILD_ID = 1489687778710130728             # ID вашего сервера KAGE
+GTA_ROLE_ID = 1516860422613897216          # ID роли GTA
+TICKET_CATEGORY_ID = 1489687779960033381   # ID категории для анкет
 
-# ВАШ НОВИЙ КАНАЛ ДЛЯ ЗВІТІВ ПРО ІНВАЙТИ ТА АНТИ-ТВІНКІВ:
-SECURITY_LOG_CHANNEL_ID = 1524853896822915173
+# Ваши новые каналы под каждую вкладку (замените эти ID на свои):
+LOG_BANS_ID = 1489741516971966655          # 1. Папка Бан
+SECURITY_LOG_CHANNEL_ID = 1524853896822915173 # 2. Зашел / Вышел (+ Твинки)
+LOG_ROLES_ID = 1489741698841182260         # 3. Папка Роли
+LOG_NICKNAMES_ID = 1489741658487656529     # 4. Папка Никнеймы
+LOG_MESSAGES_ID = 1489741740180242492      # 5. Папка Сообщения
+LOG_VOICE_ID = 1489741808953983036         # 6. Папка Войс перемещения
+LOG_SERVER_GENERAL_ID = 1489742637278822531 # 7. Папка Сервер Общее
+
+ADMIN_LOG_CHANNEL_ID = 1524836308332187699 # ID канала "руководство" для анкет
 # =========================================================================
 
 @bot.event
@@ -70,25 +81,24 @@ async def on_ready():
     if not update_banner_loop.is_running():
         update_banner_loop.start()
 
-# --- ФУНКЦІЯ ГЛИБОКОЇ ПЕРЕВІРКИ НОВИХ УЧАСНИКІВ ---
+# =========================================================================
+# 2. ПАПКА СИСТЕМНЫЕ УВЕДОМЛЕНИЯ (ЗАШЕЛ / ВЫШЕЛ + ДАННЫЕ + КТО ПРИГЛАСИЛ)
+# =========================================================================
 @bot.event
 async def on_member_join(member):
     guild = member.guild
-    # Спрямовуємо повідомлення саме у твій новий вказаний канал
     security_channel = bot.get_channel(SECURITY_LOG_CHANNEL_ID)
     
-    inviter_text = "Не вдалося визначити (можливо, офіційне посилання Discord або додано адміном)"
+    inviter_text = "Не вдалося визначити (офіційне посилання або додано адміном)"
     invite_code_text = "Невідомо"
     invite_uses_text = "Невідомо"
     invite_used = None
     
-    # 1. Отримуємо свіжий список інваїтів із сервера
     try:
         current_invites = await guild.invites()
     except:
         return 
 
-    # Шукаємо яке посилання спрацювало
     if guild.id in invites_cache:
         for old_inv in invites_cache[guild.id]:
             for new_inv in current_invites:
@@ -97,6 +107,11 @@ async def on_member_join(member):
                     inviter_text = f"{new_inv.inviter.mention} (`{new_inv.inviter.name}`)"
                     invite_code_text = f"`{new_inv.code}`"
                     invite_uses_text = f"`{new_inv.uses}` користувачів"
+                    # Сохраняем в кэш информацию о том, кто пригласил этого человека
+                    member_inviters[member.id] = {
+                        "inviter": f"{new_inv.inviter.name} ({new_inv.inviter.mention})",
+                        "code": new_inv.code
+                    }
                     break
             if invite_used:
                 break
@@ -104,27 +119,24 @@ async def on_member_join(member):
     if not invite_used and guild.vanity_url_code:
         inviter_text = "Офіційне кастомне посилання сервера (Vanity URL)"
         invite_code_text = f"`{guild.vanity_url_code}`"
+        member_inviters[member.id] = {"inviter": "Vanity URL", "code": guild.vanity_url_code}
 
-    # Оновлюємо кеш у пам'яті для наступного входу
     invites_cache[guild.id] = current_invites
 
-    # 2. Рахуємо точний вік акаунта новичка
     created_at = member.created_at.strftime("%d.%m.%Y %H:%M")
     now = datetime.now(timezone.utc)
     account_age_days = (now - member.created_at).days
 
-    # Визначаємо рівень небезпеки (якщо акаунту менше 14 днів — б'ємо на сполох)
     if account_age_days <= 14:
         security_status = f"🚨 **ПІДОЗРА НА ТВІНК!** Акаунту всього **{account_age_days} днів**!"
-        embed_color = 0xff0000 # Червоний колір тривоги
+        embed_color = 0xff0000 
     else:
         security_status = f"✅ Надійний акаунт (Вік: {account_age_days} днів)"
-        embed_color = 0x00ff00 # Зелений спокійний колір
+        embed_color = 0x00ff00 
 
-    # 3. Надсилаємо повний звіт у новий канал
     if security_channel:
         embed = discord.Embed(
-            title="🔍 ДЕТАЛЬНИЙ ЗВІТ ПРО НОВОГО УЧАСНИКА",
+            title="📥 УЧАСНИК ЗАЙШОВ НА СЕРВЕР",
             description=f"Користувач {member.mention} приєднався до спільноти KAGE.",
             color=embed_color
         )
@@ -132,12 +144,38 @@ async def on_member_join(member):
         embed.add_field(name="📅 Дата створення акаунта:", value=f"• Створено: `{created_at}`\n• Статус: {security_status}", inline=False)
         embed.add_field(name="🔗 Хто запросив за посиланнями:", value=f"• Автор: {inviter_text}", inline=False)
         embed.add_field(name="📊 Статистика посилання:", value=f"• Код: {invite_code_text}\n• Всього зайшло за ним: {invite_uses_text}", inline=False)
-        
         embed.set_thumbnail(url=member.display_avatar.url)
         embed.set_footer(text=f"KAGE Security System • {datetime.now().strftime('%H:%M:%S')}")
         await security_channel.send(embed=embed)
 
-# Оновлення кешу при створенні/видаленні посилань адмінами
+@bot.event
+async def on_member_remove(member):
+    security_channel = bot.get_channel(SECURITY_LOG_CHANNEL_ID)
+    if not security_channel: return
+
+    created_at = member.created_at.strftime("%d.%m.%Y %H:%M")
+    now = datetime.now(timezone.utc)
+    account_age_days = (now - member.created_at).days
+    
+    # Достаем из нашей памяти, кто его когда-то приглашал
+    invite_info = member_inviters.get(member.id, {"inviter": "Невідомо / Зник з пам'яті бота", "code": "Невідомо"})
+    
+    embed = discord.Embed(
+        title="📤 УЧАСНИК ВИЙШОВ З СЕРВЕРА",
+        description=f"Користувач {member.mention} покинув спільноту KAGE.",
+        color=0xffa500 # Оранжевый лог выхода
+    )
+    embed.add_field(name="👤 Учасник:", value=f"• Нік: `{member.name}`\n• ID: `{member.id}`", inline=False)
+    embed.add_field(name="📅 Профіль:", value=f"• Створено: `{created_at}`\n• Вік акаунта: `{account_age_days} днів`", inline=False)
+    embed.add_field(name="🔗 Хто його колись запросив:", value=f"• Автор: {invite_info['inviter']}\n• Код посилання: `{invite_info['code']}`", inline=False)
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.set_footer(text=f"KAGE Security System • {datetime.now().strftime('%H:%M:%S')}")
+    await security_channel.send(embed=embed)
+    
+    # Удаляем из кэша, чтобы не копить память
+    if member.id in member_inviters:
+        del member_inviters[member.id]
+
 @bot.event
 async def on_invite_create(invite):
     try: invites_cache[invite.guild.id] = await invite.guild.invites()
@@ -148,94 +186,45 @@ async def on_invite_delete(invite):
     try: invites_cache[invite.guild.id] = await invite.guild.invites()
     except: pass
 
-# --- АВТОМАТИЧНЕ СТВОРЕННЯ КАНАЛУ РЕКРУТИНГУ GTA ---
+# =========================================================================
+# 1. ПАПКА БАН (КТО, КОГО, ПРИЧИНА)
+# =========================================================================
+@bot.event
+async def on_member_ban(guild, user):
+    log_channel = bot.get_channel(LOG_BANS_ID)
+    if not log_channel: return
+    
+    await asyncio.sleep(2) # Пауза, чтобы Discord успел записать событие в Аудит
+    moderator = "Невідомо (Адмін / Інший бот)"
+    reason = "Не вказана"
+    
+    try:
+        async for entry in guild.audit_logs(limit=3, action=discord.AuditLogAction.ban):
+            if entry.target.id == user.id:
+                moderator = entry.user.mention
+                reason = entry.reason if entry.reason else "Не вказана"
+                break
+    except: pass
+
+    embed = discord.Embed(title="🔨 ЗАБЛОКОВАНО КОРИСТУВАЧА", color=0x8b0000)
+    embed.add_field(name="👤 Кого:", value=f"{user.mention} (`{user.name}`)\nID: `{user.id}`", inline=False)
+    embed.add_field(name="🛡️ Хто заблокував:", value=moderator, inline=False)
+    embed.add_field(name="📝 Причина:", value=f"`{reason}`", inline=False)
+    embed.set_footer(text=f"KAGE Admin Logs • {datetime.now().strftime('%H:%M:%S')}")
+    await log_channel.send(embed=embed)
+
+# =========================================================================
+# 3. ПАПКА РОЛИ (КТО, КОМУ, КАКАЯ РОЛЬ, ДАТА И ВРЕМЯ)
+# =========================================================================
 @bot.event
 async def on_member_update(before, after):
+    # --- Сначала проверяем вашу старую функцию рекрутинга GTA ---
     gta_role = discord.utils.get(after.guild.roles, id=GTA_ROLE_ID)
     if gta_role in after.roles and gta_role not in before.roles:
-        if after.id in active_interviews: return
-        active_interviews.add(after.id)
-        guild = after.guild
-        category = discord.utils.get(guild.categories, id=TICKET_CATEGORY_ID)
-        
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            after: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        }
-        
-        ticket_channel = await guild.create_text_channel(name=f"анкета-{after.name}", category=category, overwrites=overwrites)
-        embed_rules = discord.Embed(
-            title="⚔️ ВІТАЄМО У СІМ'Ї KAGE | РЕКРУТИНГ ⚔️",
-            description=f"Привіт, {after.mention}! Ти обрав роль гравця GTA.\n"
-                        f"Зараз бот проведе автоматичне опитування. Будь ласка, відповідай на кожне питання одним повідомленням. Починаємо!",
-            color=0x00ffff
-        )
-        await ticket_channel.send(embed=embed_rules)
-        bot.loop.create_task(run_interview(ticket_channel, after))
-
-async def run_interview(channel, member):
-    answers = []
-    def check(m): return m.author == member and m.channel == channel
-    for question in QUESTIONS:
-        await channel.send(f"**{question}**")
-        try:
-            msg = await bot.wait_for('message', check=check, timeout=600.0)
-            answers.append(msg.content)
-        except:
-            active_interviews.discard(member.id)
-            await channel.delete()
-            return
-            
-    await channel.send("🎉 **Дякуємо! Анкету успішно заповнено.**\nДані надіслані керівництву!")
-    result_embed = discord.Embed(title=f"📋 НОВА АНКЕТА ВІД: {member.name}", color=0x00ff00)
-    for q, a in zip(QUESTIONS, answers): result_embed.add_field(name=q, value=a, inline=False)
-    admin_channel = bot.get_channel(ADMIN_LOG_CHANNEL_ID)
-    if admin_channel: await admin_channel.send(content="🔔 **Надійшла нова анкетна заявка GTA!**", embed=result_embed)
-    active_interviews.discard(member.id)
-    try: await channel.delete(reason="Анкета успішно заповнена")
-    except: pass
-
-# --- АВТОМАТИЧНИЙ БАННЕР ---
-@tasks.loop(minutes=3)
-async def update_banner_loop():
-    GUILD_ID = 1489687778710130728 
-    try:
-        guild = await bot.fetch_guild(GUILD_ID)
-        full_guild = bot.get_guild(GUILD_ID)
-        total_members = full_guild.member_count if full_guild else guild.member_count
-    except: return
-    try:
-        try: image = Image.open('background.png')
-        except: image = Image.open('фон.png')
-        draw = ImageDraw.Draw(image)
-        voice_members = 0
-        if full_guild:
-            for channel in full_guild.voice_channels: voice_members += len(channel.members)
-            
-        icon_user, icon_voice = "\uf0c0", "\uf130"
-        num_user, num_voice = f"{total_members}", f"{voice_members}"
-        
-        try: font_icons = ImageFont.truetype('iconfont.ttf', size=95)
-        except: font_icons = ImageFont.load_default()
-        try: font_nums = ImageFont.truetype('myfont.ttf', size=95)
-        except: font_nums = ImageFont.load_default()
-        
-        draw.text((220, 380), icon_user, fill=(255, 255, 255), font=font_icons)
-        draw.text((350, 380), num_user, fill=(255, 255, 255), font=font_nums)
-        draw.text((225, 510), icon_voice, fill=(255, 255, 255), font=font_icons)
-        draw.text((350, 510), num_voice, fill=(255, 255, 255), font=font_nums)
-        
-        img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='PNG')
-        img_byte_arr.seek(0)
-        await guild.edit(banner=img_byte_arr.read())
-    except: pass
-
-@bot.command()
-async def forcebanner(ctx):
-    await update_banner_loop()
-    await ctx.send("Готово!")
-
-token = os.environ.get('DISCORD_TOKEN')
-bot.run(token)
+        if after.id not in active_interviews:
+            active_interviews.add(after.id)
+            guild = after.guild
+            category = discord.utils.get(guild.categories, id=TICKET_CATEGORY_ID)
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                after: discord.PermissionOverwrite(read_messages=True, send_messages=True),
