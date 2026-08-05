@@ -225,6 +225,10 @@ async def on_member_update(before, after):
             active_interviews.add(after.id)
             guild = after.guild
             category = discord.utils.get(guild.categories, id=TICKET_CATEGORY_ID)
-            overwrites = {
-                guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                after: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                    overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            after: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+        
+        ticket_channel = await guild.create_text_channel(name=f"анкета-{after.name}", category=category, overwrites=overwrites)
