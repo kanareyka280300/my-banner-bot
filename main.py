@@ -39,7 +39,7 @@ GUILD_ID = 1489687778710130728             # ID твого сервера KAGE
 GTA_ROLE_ID = 1516860422613897216          # ID ролі GTA
 TICKET_CATEGORY_ID = 1489687779960033381   # ID категорії для анкет
 
-# Твої нові канали під кожну вкладку (впиши сюди свої ID замість цифр нижче):
+# Твої нові канали під кожну вкладку (впиши сюди свої реальні ID замість цифр нижче):
 LOG_BANS_ID = 1489741516971966655             # 1. Папка Бан
 SECURITY_LOG_CHANNEL_ID = 1524853896822915173 # 2. Зайшов / Вийшов (+ Твинки)
 LOG_ROLES_ID = 1489741698841182260            # 3. Папка Ролі
@@ -62,6 +62,7 @@ async def on_ready():
         except:
             pass
             
+    # БЕЗПЕЧНИЙ ЗАПУСК БАННЕРА
     if not update_banner_loop.is_running():
         update_banner_loop.start()
 
@@ -224,5 +225,3 @@ async def on_member_update(before, after):
             bot.loop.create_task(run_interview(ticket_channel, after))
 
     # Лог змін ролей
-    if before.roles != after.roles:
-
