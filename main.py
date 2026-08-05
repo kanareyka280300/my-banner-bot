@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timezone
 
 # ВКЛЮЧАЕМ ВСЕ НЕОБХОДИМЫЕ ИНТЕНТЫ ДЛЯ ЛОГИРОВАНИЯ
-intents = discord.Intents.default()
+intents = discord.Intents.all()
 intents.message_content = True
 intents.members = True 
 intents.voice_states = True 
