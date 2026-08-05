@@ -25,7 +25,7 @@ def run_web_server():
 
 threading.Thread(target=run_web_server, daemon=True).start()
 
-intents = discord.Intents.default()
+intents = discord.Intents.all()
 intents.message_content = True
 intents.members = True 
 intents.voice_states = True 
