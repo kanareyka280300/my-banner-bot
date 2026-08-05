@@ -1,4 +1,3 @@
-
 import discord
 from discord.ext import commands, tasks
 import io
@@ -8,23 +7,7 @@ import urllib.request
 import urllib.parse
 import asyncio
 from PIL import Image, ImageDraw, ImageFont
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import threading
 from datetime import datetime, timezone
-
-# Код веб-сервера для стабільної цілодобової роботи хостинга
-class WebServer(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        self.wfile.write(b"Bot is alive!")
-
-def run_web_server():
-    server = HTTPServer(('0.0.0.0', 8080), WebServer)
-    server.serve_forever()
-
-threading.Thread(target=run_web_server, daemon=True).start()
 
 # ВКЛЮЧАЕМ ВСЕ НЕОБХОДИМЫЕ ИНТЕНТЫ ДЛЯ ЛОГИРОВАНИЯ
 intents = discord.Intents.default()
@@ -56,14 +39,14 @@ GUILD_ID = 1489687778710130728             # ID твого сервера KAGE
 GTA_ROLE_ID = 1516860422613897216          # ID ролі GTA
 TICKET_CATEGORY_ID = 1489687779960033381   # ID категорії для анкет
 
-# Твої нові канали під кожну вкладку (заміни ці цифри на свої реальні ID):
-LOG_BANS_ID = 1489741516971966655             # 1. Папка Бан
-SECURITY_LOG_CHANNEL_ID = 1524853896822915173 # 2. Зайшов / Вийшов (+ Твінки)
-LOG_ROLES_ID = 1489741698841182260            # 3. Папка Ролі
-LOG_NICKNAMES_ID = 1489741658487656529        # 4. Папка Нікнейми
-LOG_MESSAGES_ID = 1489741740180242492         # 5. Папка Повідомлення
-LOG_VOICE_ID = 1489741808953983036            # 6. Папка Войс переміщення
-LOG_SERVER_GENERAL_ID = 1489742637278822531    # 7. Папка Сервер Загальне
+# Твої нові канали під кожну вкладку (впиши сюди свої ID замість цифр нижче):
+LOG_BANS_ID = 111111111111111111              # 1. Папка Бан
+SECURITY_LOG_CHANNEL_ID = 1524853896822915173 # 2. Зайшов / Вийшов (+ Твинки)
+LOG_ROLES_ID = 333333333333333333             # 3. Папка Ролі
+LOG_NICKNAMES_ID = 444444444444444444         # 4. Папка Нікнейми
+LOG_MESSAGES_ID = 555555555555555555          # 5. Папка Повідомлення
+LOG_VOICE_ID = 666666666666666666             # 6. Папка Войс переміщення
+LOG_SERVER_GENERAL_ID = 77777777777777777     # 7. Папка Сервер Загальне
 
 ADMIN_LOG_CHANNEL_ID = 1524836308332187699     # ID каналу "керівництво" для анкет
 # =========================================================================
@@ -83,7 +66,7 @@ async def on_ready():
         update_banner_loop.start()
 
 # =========================================================================
-# 2. ПАПКА СИСТЕМНІ ПОВІДОМЛЕННЯ (ЗАЙШОВ / ВИЙШОВ + ДАНІ + ХТО ЗАПРОСИВ)
+# 2. ПАПКА СИСТЕМНІ ПОВІДОМЛЕННЯ (ЗАЙШОВ / ВИЙШОВ + ДАННІ + ХТО ЗАПРОСИВ)
 # =========================================================================
 @bot.event
 async def on_member_join(member):
@@ -233,3 +216,13 @@ async def on_member_update(before, after):
             
             ticket_channel = await guild.create_text_channel(name=f"анкета-{after.name}", category=category, overwrites=overwrites)
             embed_rules = discord.Embed(
+                title="⚔️ ВІТАЄМО У СІМ'Ї KAGE | РЕКРУТИНГ ⚔️",
+                description=f"Привіт, {after.mention}! Ти обрав роль гравця GTA.\nЗараз бот проведе автоматичне опитування. Будь ласка, відповідай на кожне питання одним повідомленням. Починаємо!",
+                color=0x00ffff
+            )
+            await ticket_channel.send(embed=embed_rules)
+            bot.loop.create_task(run_interview(ticket_channel, after))
+
+    # Лог змін ролей
+    if before.roles != after.roles:
+
