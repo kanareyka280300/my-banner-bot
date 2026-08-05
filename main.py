@@ -1,3 +1,4 @@
+
 import discord
 from discord.ext import commands, tasks
 import io
@@ -31,13 +32,13 @@ intents.message_content = True
 intents.members = True 
 intents.voice_states = True 
 intents.invites = True  
-intents.moderation = True # Для отслеживания банов
+intents.moderation = True # Для відстеження банів
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Словники для кешування
 invites_cache = {}
-member_inviters = {} # Память: кто кого пригласил (чтобы логировать при выходе)
+member_inviters = {} # Пам'ять: хто кого запросив (щоб логувати при виході)
 
 # --- НАЛАШТУВАННЯ АНКЕТИ РЕКРУТИНГУ GTA ---
 QUESTIONS = [
@@ -49,22 +50,22 @@ QUESTIONS = [
 active_interviews = set()
 
 # =========================================================================
-# ⚠️ НАСТРОЙКА ID КАНАЛОВ ДЛЯ ВАШИХ СЕМИ ПАПОК ЛОГОВ:
+# ⚠️ НАЛАШТУВАННЯ ID КАНАЛІВ ДЛЯ ТВОЇХ СЕМИ ПАПОК ЛОГІВ:
 # =========================================================================
-GUILD_ID = 1489687778710130728             # ID вашего сервера KAGE
-GTA_ROLE_ID = 1516860422613897216          # ID роли GTA
-TICKET_CATEGORY_ID = 1489687779960033381   # ID категории для анкет
+GUILD_ID = 1489687778710130728             # ID твого сервера KAGE
+GTA_ROLE_ID = 1516860422613897216          # ID ролі GTA
+TICKET_CATEGORY_ID = 1489687779960033381   # ID категорії для анкет
 
-# Ваши новые каналы под каждую вкладку (замените эти ID на свои):
-LOG_BANS_ID = 1489741516971966655          # 1. Папка Бан
-SECURITY_LOG_CHANNEL_ID = 1524853896822915173 # 2. Зашел / Вышел (+ Твинки)
-LOG_ROLES_ID = 1489741698841182260         # 3. Папка Роли
-LOG_NICKNAMES_ID = 1489741658487656529     # 4. Папка Никнеймы
-LOG_MESSAGES_ID = 1489741740180242492      # 5. Папка Сообщения
-LOG_VOICE_ID = 1489741808953983036         # 6. Папка Войс перемещения
-LOG_SERVER_GENERAL_ID = 1489742637278822531 # 7. Папка Сервер Общее
+# Твої нові канали під кожну вкладку (заміни ці цифри на свої реальні ID):
+LOG_BANS_ID = 1489741516971966655             # 1. Папка Бан
+SECURITY_LOG_CHANNEL_ID = 1524853896822915173 # 2. Зайшов / Вийшов (+ Твінки)
+LOG_ROLES_ID = 1489741698841182260            # 3. Папка Ролі
+LOG_NICKNAMES_ID = 1489741658487656529        # 4. Папка Нікнейми
+LOG_MESSAGES_ID = 1489741740180242492         # 5. Папка Повідомлення
+LOG_VOICE_ID = 1489741808953983036            # 6. Папка Войс переміщення
+LOG_SERVER_GENERAL_ID = 1489742637278822531    # 7. Папка Сервер Загальне
 
-ADMIN_LOG_CHANNEL_ID = 1524836308332187699 # ID канала "руководство" для анкет
+ADMIN_LOG_CHANNEL_ID = 1524836308332187699     # ID каналу "керівництво" для анкет
 # =========================================================================
 
 @bot.event
@@ -82,7 +83,7 @@ async def on_ready():
         update_banner_loop.start()
 
 # =========================================================================
-# 2. ПАПКА СИСТЕМНЫЕ УВЕДОМЛЕНИЯ (ЗАШЕЛ / ВЫШЕЛ + ДАННЫЕ + КТО ПРИГЛАСИЛ)
+# 2. ПАПКА СИСТЕМНІ ПОВІДОМЛЕННЯ (ЗАЙШОВ / ВИЙШОВ + ДАНІ + ХТО ЗАПРОСИВ)
 # =========================================================================
 @bot.event
 async def on_member_join(member):
@@ -107,7 +108,6 @@ async def on_member_join(member):
                     inviter_text = f"{new_inv.inviter.mention} (`{new_inv.inviter.name}`)"
                     invite_code_text = f"`{new_inv.code}`"
                     invite_uses_text = f"`{new_inv.uses}` користувачів"
-                    # Сохраняем в кэш информацию о том, кто пригласил этого человека
                     member_inviters[member.id] = {
                         "inviter": f"{new_inv.inviter.name} ({new_inv.inviter.mention})",
                         "code": new_inv.code
@@ -157,13 +157,12 @@ async def on_member_remove(member):
     now = datetime.now(timezone.utc)
     account_age_days = (now - member.created_at).days
     
-    # Достаем из нашей памяти, кто его когда-то приглашал
     invite_info = member_inviters.get(member.id, {"inviter": "Невідомо / Зник з пам'яті бота", "code": "Невідомо"})
     
     embed = discord.Embed(
         title="📤 УЧАСНИК ВИЙШОВ З СЕРВЕРА",
         description=f"Користувач {member.mention} покинув спільноту KAGE.",
-        color=0xffa500 # Оранжевый лог выхода
+        color=0xffa500 
     )
     embed.add_field(name="👤 Учасник:", value=f"• Нік: `{member.name}`\n• ID: `{member.id}`", inline=False)
     embed.add_field(name="📅 Профіль:", value=f"• Створено: `{created_at}`\n• Вік акаунта: `{account_age_days} днів`", inline=False)
@@ -172,9 +171,9 @@ async def on_member_remove(member):
     embed.set_footer(text=f"KAGE Security System • {datetime.now().strftime('%H:%M:%S')}")
     await security_channel.send(embed=embed)
     
-    # Удаляем из кэша, чтобы не копить память
     if member.id in member_inviters:
-        del member_inviters[member.id]
+        try: del member_inviters[member.id]
+        except: pass
 
 @bot.event
 async def on_invite_create(invite):
@@ -187,14 +186,14 @@ async def on_invite_delete(invite):
     except: pass
 
 # =========================================================================
-# 1. ПАПКА БАН (КТО, КОГО, ПРИЧИНА)
+# 1. ПАПКА БАН (ХТО, КОГО, ПРИЧИНА)
 # =========================================================================
 @bot.event
 async def on_member_ban(guild, user):
     log_channel = bot.get_channel(LOG_BANS_ID)
     if not log_channel: return
     
-    await asyncio.sleep(2) # Пауза, чтобы Discord успел записать событие в Аудит
+    await asyncio.sleep(2) 
     moderator = "Невідомо (Адмін / Інший бот)"
     reason = "Не вказана"
     
@@ -214,21 +213,23 @@ async def on_member_ban(guild, user):
     await log_channel.send(embed=embed)
 
 # =========================================================================
-# 3. ПАПКА РОЛИ (КТО, КОМУ, КАКАЯ РОЛЬ, ДАТА И ВРЕМЯ)
+# 3. ПАПКА РОЛІ ТА РЕКРУТИНГ GTA
 # =========================================================================
 @bot.event
 async def on_member_update(before, after):
-    # --- Сначала проверяем вашу старую функцию рекрутинга GTA ---
+    # Рекрутинг GTA
     gta_role = discord.utils.get(after.guild.roles, id=GTA_ROLE_ID)
     if gta_role in after.roles and gta_role not in before.roles:
         if after.id not in active_interviews:
             active_interviews.add(after.id)
             guild = after.guild
             category = discord.utils.get(guild.categories, id=TICKET_CATEGORY_ID)
-                    overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            after: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        }
-        
-        ticket_channel = await guild.create_text_channel(name=f"анкета-{after.name}", category=category, overwrites=overwrites)
+            
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                after: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+            }
+            
+            ticket_channel = await guild.create_text_channel(name=f"анкета-{after.name}", category=category, overwrites=overwrites)
+            embed_rules = discord.Embed(
