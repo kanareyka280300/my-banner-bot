@@ -24,20 +24,19 @@ QUESTIONS = [
 active_interviews = set()
 
 # =========================================================================
-# ⚠️ НАЛАШТУВАННЯ ID КАНАЛІВ ДЛЯ ТВОЇХ СЕМИ ПАПОК ЛОГІВ:
+# ⚠️ ВСЕ ТВОИ РЕАЛЬНЫЕ ID КАНАЛОВ УЖЕ ВСТАВЛЕНЫ СЮДА АВТОМАТИЧЕСКИ:
 # =========================================================================
 GUILD_ID = 1489687778710130728             # ID твого сервера KAGE
 GTA_ROLE_ID = 1516860422613897216          # ID ролі GTA
 TICKET_CATEGORY_ID = 1489687779960033381   # ID категорії для анкет
 
-# Твої нові канали під кожну вкладку (впиши сюди свої ID замість цифр нижче):
-LOG_BANS_ID = 1489741516971966655              # 1. Папка Бан
+LOG_BANS_ID = 148974351034404865              # 1. Папка Бан
 SECURITY_LOG_CHANNEL_ID = 1524853896822915173 # 2. Зайшов / Вийшов (+ Твинки)
-LOG_ROLES_ID = 1489741698841182260             # 3. Папка Ролі
-LOG_NICKNAMES_ID = 1489741658487656529        # 4. Папка Нікнейми
-LOG_MESSAGES_ID = 1489741740180242492          # 5. Папка Повідомлення
-LOG_VOICE_ID = 1489741808953983036             # 6. Папка Войс переміщення
-LOG_SERVER_GENERAL_ID = 1489742637278822531     # 7. Папка Сервер Загальне
+LOG_ROLES_ID = 148974354184112208             # 3. Папка Ролі
+LOG_NICKNAMES_ID = 148974355203325453         # 4. Папка Нікнейми
+LOG_MESSAGES_ID = 148974170532231433          # 5. Папка Повідомлення
+LOG_VOICE_ID = 148974136931238320             # 6. Папка Войс переміщення
+LOG_SERVER_GENERAL_ID = 1489743537278212131     # 7. Папка Server General
 
 ADMIN_LOG_CHANNEL_ID = 1524836308332187699     # ID каналу "керівництво" для анкет
 # =========================================================================
@@ -46,86 +45,80 @@ ADMIN_LOG_CHANNEL_ID = 1524836308332187699     # ID каналу "керівни
 async def on_ready():
     print(f'Бот {bot.user.name} успішно запущений і готовий до роботи!')
     for guild in bot.guilds:
-        try:
-            invites_cache[guild.id] = await guild.invites()
-        except:
-            pass
+        try: invites_cache[guild.id] = await guild.invites()
+        except: pass
             
     if not update_banner_loop.is_running():
         update_banner_loop.start()
 
-# --- 2. ПАПКА ЗАЙШОВ НА СЕРВЕР ---
+# --- 2. СИСТЕМНІ ПОВІДОМЛЕННЯ (ЗАЙШОВ / ВИЙШОВ) ---
 @bot.event
 async def on_member_join(member):
-    channel = bot.get_channel(SECURITY_LOG_CHANNEL_ID)
-    if not channel: return
-    embed = discord.Embed(title="📥 УЧАСНИК ЗАЙШОВ НА СЕРВЕР", color=0x00ff00)
-    embed.description = f"Користувач {member.mention} (`{member.name}`) приєднався до спільноти KAGE.\nID: `{member.id}`"
-    await channel.send(embed=embed)
+    guild = member.guild
+    security_channel = bot.get_channel(SECURITY_LOG_CHANNEL_ID)
+    if not security_channel: return
+    
+    inviter_text, invite_code_text = "Невідомо", "Невідомо"
+    try:
+        current_invites = await guild.invites()
+        if guild.id in invites_cache:
+            for old_inv in invites_cache[guild.id]:
+                for new_inv in current_invites:
+                    if old_inv.code == new_inv.code and new_inv.uses > old_inv.uses:
+                        inviter_text = f"{new_inv.inviter.mention}"
+                        invite_code_text = f"`{new_inv.code}`"
+                        member_inviters[member.id] = {"inviter": inviter_text, "code": invite_code_text}
+                        break
+        invites_cache[guild.id] = current_invites
+    except: pass
 
-# --- 2. ПАПКА ВИЙШОВ З СЕРВЕРА ---
+    created_at = member.created_at.strftime("%d.%m.%Y %H:%M")
+    account_age_days = (datetime.now(timezone.utc) - member.created_at).days
+    status = f"🚨 **ПІДОЗРА НА ТВІНК!** ({account_age_days} днів)" if account_age_days <= 14 else f"✅ Надійний акаунт ({account_age_days} днів)"
+
+    embed = discord.Embed(title="📥 УЧАСНИК ЗАЙШОВ НА СЕРВЕР", color=0x00ff00)
+    embed.add_field(name="👤 Учасник:", value=f"• Нік: {member.mention}\n• ID: `{member.id}`", inline=False)
+    embed.add_field(name="📅 Акаунт:", value=f"• Створено: `{created_at}`\n• Статус: {status}", inline=False)
+    embed.add_field(name="🔗 Інвайт:", value=f"• Запросив: {inviter_text}\n• Код посилання: {invite_code_text}", inline=False)
+    embed.set_thumbnail(url=member.display_avatar.url)
+    await security_channel.send(embed=embed)
+
 @bot.event
 async def on_member_remove(member):
-    channel = bot.get_channel(SECURITY_LOG_CHANNEL_ID)
-    if not channel: return
+    security_channel = bot.get_channel(SECURITY_LOG_CHANNEL_ID)
+    if not security_channel: return
+
+    invite_info = member_inviters.get(member.id, {"inviter": "Невідомо", "code": "Невідомо"})
+    created_at = member.created_at.strftime("%d.%m.%Y %H:%M")
+    account_age_days = (datetime.now(timezone.utc) - member.created_at).days
+
     embed = discord.Embed(title="📤 УЧАСНИК ВИЙШОВ З СЕРВЕРА", color=0xffa500)
-    embed.description = f"Користувач {member.mention} (`{member.name}`) покинув спільноту KAGE.\nID: `{member.id}`"
-    await channel.send(embed=embed)
+    embed.add_field(name="👤 Учасник:", value=f"• Нік: {member.mention}\n• ID: `{member.id}`", inline=False)
+    embed.add_field(name="📅 Акаунт:", value=f"• Створено: `{created_at}`\n• Вік: `{account_age_days} днів`", inline=False)
+    embed.add_field(name="🔗 Колишній інвайт:", value=f"• Запросив: {invite_info['inviter']}\n• Код посилання: {invite_info['code']}", inline=False)
+    embed.set_thumbnail(url=member.display_avatar.url)
+    await security_channel.send(embed=embed)
 
 # --- 1. ПАПКА БАН ---
 @bot.event
 async def on_member_ban(guild, user):
     channel = bot.get_channel(LOG_BANS_ID)
     if not channel: return
+    await asyncio.sleep(1)
+    moderator, reason = "Невідомо", "Не вказана"
+    try:
+        async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
+            if entry.target.id == user.id:
+                moderator, reason = entry.user.mention, entry.reason or "Не вказана"
+                break
+    except: pass
     embed = discord.Embed(title="🔨 ЗАБЛОКОВАНО КОРИСТУВАЧА", color=0x8b0000)
-    embed.description = f"Користувач {user.mention} (`{user.name}`) був заблокований на сервері.\nID: `{user.id}`"
+    embed.add_field(name="👤 Кого:", value=f"{user.mention} (ID: `{user.id}`)", inline=False)
+    embed.add_field(name="🛡️ Модератор:", value=moderator, inline=True)
+    embed.add_field(name="📝 Причина:", value=f"`{reason}`", inline=True)
     await channel.send(embed=embed)
 
-# --- 5. ПАПКА ПОВІДОМЛЕННЯ (ВИДАЛЕННЯ) ---
-@bot.event
-async def on_message_delete(message):
-    if message.author.bot: return
-    channel = bot.get_channel(LOG_MESSAGES_ID)
-    if not channel: return
-    embed = discord.Embed(title="🗑️ ПОВІДОМЛЕННЯ ВИДАЛЕНО", color=0xe74c3c)
-    embed.add_field(name="Автор:", value=message.author.mention, inline=True)
-    embed.add_field(name="Канал:", value=message.channel.mention, inline=True)
-    embed.add_field(name="Текст:", value=f"```\n{message.content if message.content else 'Текст відсутній'}\n```", inline=False)
-    await channel.send(embed=embed)
-
-# --- 5. ПАПКА ПОВІДОМЛЕННЯ (РЕДАГУВАННЯ) ---
-@bot.event
-async def on_message_edit(before, after):
-    if before.author.bot or before.content == after.content: return
-    channel = bot.get_channel(LOG_MESSAGES_ID)
-    if not channel: return
-    embed = discord.Embed(title="✏️ ПОВІДОМЛЕННЯ ВІДРЕДАГОВАНО", color=0xf1c40f)
-    embed.add_field(name="Автор:", value=before.author.mention, inline=False)
-    embed.add_field(name="Було:", value=f"```\n{before.content}\n```", inline=False)
-    embed.add_field(name="Стало:", value=f"```\n{after.content}\n```", inline=False)
-    await channel.send(embed=embed)
-
-# --- 6. ПАПКА ВОЙС ПЕРЕМІЩЕННЯ ---
-@bot.event
-async def on_voice_state_update(member, before, after):
-    channel = bot.get_channel(LOG_VOICE_ID)
-    if not channel: return
-    embed = discord.Embed(color=0x9b59b6)
-    
-    if before.channel is None and after.channel is not None:
-        embed.title = "🔊 ВХІД У ГОЛОСОВИЙ КАНАЛ"
-        embed.description = f"{member.mention} зайшов у канал {after.channel.mention}"
-        await channel.send(embed=embed)
-    elif before.channel is not None and after.channel is None:
-        embed.title = "🔇 ВИХІД З ГОЛОСОВОГО КАНАЛУ"
-        embed.description = f"{member.mention} покинув канал {before.channel.mention}"
-        await channel.send(embed=embed)
-    elif before.channel is not None and after.channel is not None and before.channel.id != after.channel.id:
-        embed.title = "🔀 ПЕРЕМІЩЕННЯ МІЖ ВОЙСАМИ"
-        embed.description = f"{member.mention} перейшов з {before.channel.mention} до {after.channel.mention}"
-        await channel.send(embed=embed)
-
-# --- 3. РОЛИ И 4. НИКНЕЙМЫ ---
+# --- 3. ПАПКА РОЛІ ТА РЕКРУТИНГ ---
 @bot.event
 async def on_member_update(before, after):
     # Рекрутинг GTA
@@ -145,80 +138,69 @@ async def on_member_update(before, after):
             await ticket_channel.send(embed=embed_rules)
             bot.loop.create_task(run_interview(ticket_channel, after))
 
-    # Зміна ролей
+    # Лог змін ролей
     if before.roles != after.roles:
         ch = bot.get_channel(LOG_ROLES_ID)
-        if ch:
-            added = [r.mention for r in after.roles if r not in before.roles]
-            rem = [r.mention for r in before.roles if r not in after.roles]
-            embed = discord.Embed(title="🎭 ЗМІНА РОЛЕЙ", color=0x3498db)
-            embed.description = f"Учасник: {after.mention}\n🟢 Додано: {', '.join(added) if added else '—'}\n🔴 Вилучено: {', '.join(rem) if rem else '—'}"
-            await ch.send(embed=embed)
+        if not ch: return
+        await asyncio.sleep(1)
+        mod = "Невідомо"
+        try:
+            async for entry in after.guild.audit_logs(limit=1, action=discord.AuditLogAction.member_role_update):
+                if entry.target.id == after.id: mod = entry.user.mention; break
+        except: pass
+        added = [r.mention for r in after.roles if r not in before.roles]
+        rem = [r.mention for r in before.roles if r not in after.roles]
+        embed = discord.Embed(title="🎭 ЗМІНА РОЛЕЙ", color=0x3498db)
+        embed.description = f"Учасник: {after.mention}\n🛡️ Модератор: {mod}\n🟢 Додано: {', '.join(added) if added else '—'}\n🔴 Вилучено: {', '.join(rem) if rem else '—'}"
+        await ch.send(embed=embed)
 
-    # Зміна нікнеймів
+    # --- 4. ПАПКА НІКНЕЙМИ ---
     if before.nick != after.nick or before.name != after.name:
         ch = bot.get_channel(LOG_NICKNAMES_ID)
-        if ch:
-            old = before.nick if before.nick else before.name
-            new = after.nick if after.nick else after.name
-            if old != new:
-                embed = discord.Embed(title="📝 ЗМІНА НІКНЕЙМУ", color=0xe67e22)
-                embed.description = f"Користувач: {after.mention}\n❌ Було: `{old}`\n✅ Стало: `{new}`"
-                await ch.send(embed=embed)
+        if not ch: return
+        old = before.nick or before.name
+        new = after.nick or after.name
+        if old != new:
+            await asyncio.sleep(1)
+            mod = after.mention
+            try:
+                async for entry in after.guild.audit_logs(limit=1, action=discord.AuditLogAction.member_update):
+                    if entry.target.id == after.id and entry.before.nick != entry.after.nick: mod = entry.user.mention; break
+            except: pass
+            embed = discord.Embed(title="📝 ЗМІНА НІКНЕЙМУ", color=0xe67e22)
+            embed.description = f"Користувач: {after.mention}\n❌ Було: `{old}`\n✅ Стало: `{new}`\n⚙️ Змінив: {mod}"
+            await ch.send(embed=embed)
 
-# --- СИСТЕМА АНКЕТУВАННЯ ---
-async def run_interview(channel, member):
-    answers = []
-    def check(m): return m.author == member and m.channel == channel
-    for question in QUESTIONS:
-        await channel.send(f"**{question}**")
-        try:
-            msg = await bot.wait_for('message', check=check, timeout=600.0)
-            answers.append(msg.content)
-        except:
-            active_interviews.discard(member.id)
-            await channel.delete()
-            return
-    await channel.send("🎉 **Анкету успішно заповнено.**")
-    result_embed = discord.Embed(title=f"📋 НОВА АНКЕТА ВІД: {member.name}", color=0x00ff00)
-    for q, a in zip(QUESTIONS, answers): result_embed.add_field(name=q, value=a, inline=False)
-    admin_channel = bot.get_channel(ADMIN_LOG_CHANNEL_ID)
-    if admin_channel: await admin_channel.send(embed=result_embed)
-    active_interviews.discard(member.id)
-    try: await channel.delete()
+# --- 5. ПАПКА ПОВІДОМЛЕННЯ ---
+@bot.event
+async def on_message_delete(message):
+    if message.author.bot: return
+    channel = bot.get_channel(LOG_MESSAGES_ID)
+    if not channel: return
+    await asyncio.sleep(1)
+    mod = message.author.mention
+    try:
+        async for entry in message.guild.audit_logs(limit=1, action=discord.AuditLogAction.message_delete):
+            if entry.target.id == message.author.id: mod = entry.user.mention; break
     except: pass
+    embed = discord.Embed(title="🗑️ ПОВІДОМЛЕННЯ ВИДАЛЕНО", color=0xe74c3c)
+    embed.add_field(name="Автор:", value=message.author.mention, inline=True)
+    embed.add_field(name="🛡️ Видалив:", value=mod, inline=True)
+    embed.add_field(name="Текст:", value=f"```\n{message.content if message.content else 'Текст відсутній'}\n```", inline=False)
+    await channel.send(embed=embed)
 
-# --- БЕЗПЕЧНИЙ БАННЕР ---
-@tasks.loop(minutes=3)
-async def update_banner_loop():
-    try:
-        guild = await bot.fetch_guild(GUILD_ID)
-        full_guild = bot.get_guild(GUILD_ID)
-        total_members = full_guild.member_count if full_guild else guild.member_count
-    except: 
-        return
-    try:
-        try: 
-            image = Image.open('background.png')
-        except:
-            try: 
-                image = Image.open('фон.png')
-            except: 
-                return
-        draw = ImageDraw.Draw(image)
-        voice_members = 0
-        if full_guild:
-            for channel in full_guild.voice_channels: 
-                voice_members += len(channel.members)
-        icon_user, icon_voice = "\uf0c0", "\uf130"
-        num_user, num_voice = f"{total_members}", f"{voice_members}"
-        try: 
-            font_icons = ImageFont.truetype('iconfont.ttf', size=95)
-        except: 
-            font_icons = ImageFont.load_default()
-        try: 
-            font_nums = ImageFont.truetype('myfont.ttf', size=95)
-        except: 
-            font_nums = ImageFont.load_default()
-        draw.text((220, 380), icon_user, fill=(255, 255, 255), font=font_icons)
-        draw.text((350, 380), num_user, fill=(255, 255, 255), font=font_nums)
+@bot.event
+async def on_message_edit(before, after):
+    if before.author.bot or before.content == after.content: return
+    channel = bot.get_channel(LOG_MESSAGES_ID)
+    if not channel: return
+    embed = discord.Embed(title="✏️ ПОВІДОМЛЕННЯ ВІДРЕДАГОВАНО", color=0xf1c40f)
+    embed.add_field(name="Автор:", value=before.author.mention, inline=False)
+    embed.add_field(name="Було:", value=f"```\n{before.content}\n```", inline=False)
+    embed.add_field(name="Стало:", value=f"```\n{after.content}\n```", inline=False)
+    await channel.send(embed=embed)
+
+# --- 6. ПАПКА ВОЙС ПЕРЕМІЩЕННЯ ---
+@bot.event
+async def on_voice_state_update(member, before, after):
+    channel = bot.get_channel(LOG_VOICE_ID)
