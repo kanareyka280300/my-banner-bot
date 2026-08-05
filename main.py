@@ -45,8 +45,10 @@ ADMIN_LOG_CHANNEL_ID = 1524836308332187699     # ID каналу "керівни
 async def on_ready():
     print(f'Бот {bot.user.name} успішно запущений і готовий до роботи!')
     for guild in bot.guilds:
-        try: invites_cache[guild.id] = await guild.invites()
-        except: pass
+        try: 
+            invites_cache[guild.id] = await guild.invites()
+        except: 
+            pass
             
     if not update_banner_loop.is_running():
         update_banner_loop.start()
@@ -121,7 +123,6 @@ async def on_member_ban(guild, user):
 # --- 3. ПАПКА РОЛІ ТА РЕКРУТИНГ ---
 @bot.event
 async def on_member_update(before, after):
-    # Рекрутинг GTA
     gta_role = discord.utils.get(after.guild.roles, id=GTA_ROLE_ID)
     if gta_role in after.roles and gta_role not in before.roles:
         if after.id not in active_interviews:
@@ -138,7 +139,6 @@ async def on_member_update(before, after):
             await ticket_channel.send(embed=embed_rules)
             bot.loop.create_task(run_interview(ticket_channel, after))
 
-    # Лог змін ролей
     if before.roles != after.roles:
         ch = bot.get_channel(LOG_ROLES_ID)
         if not ch: return
@@ -154,7 +154,6 @@ async def on_member_update(before, after):
         embed.description = f"Учасник: {after.mention}\n🛡️ Модератор: {mod}\n🟢 Додано: {', '.join(added) if added else '—'}\n🔴 Вилучено: {', '.join(rem) if rem else '—'}"
         await ch.send(embed=embed)
 
-    # --- 4. ПАПКА НІКНЕЙМИ ---
     if before.nick != after.nick or before.name != after.name:
         ch = bot.get_channel(LOG_NICKNAMES_ID)
         if not ch: return
@@ -204,3 +203,5 @@ async def on_message_edit(before, after):
 @bot.event
 async def on_voice_state_update(member, before, after):
     channel = bot.get_channel(LOG_VOICE_ID)
+    if not channel: return
+    embed = discord.Embed(color=0x9b59b6)
