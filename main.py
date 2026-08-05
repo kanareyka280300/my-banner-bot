@@ -205,4 +205,3 @@ async def on_voice_state_update(member, before, after):
     channel = bot.get_channel(LOG_VOICE_ID)
     if not channel: return
     embed = discord.Embed(color=0x9b59b6)
-
