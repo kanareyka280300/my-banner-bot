@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 import os
+import json
 from datetime import datetime, timezone
 
 # =========================================================================
@@ -31,6 +32,27 @@ MESSAGE_LOG_CHANNEL_ID = 1489741740180242492
 VOICE_LOG_CHANNEL_ID = 1489741808953983036
 GENERAL_LOG_CHANNEL_ID = 1489742637278822531
 # =========================================================================
+
+# --- ПРОСТЕ ЛОКАЛЬНЕ СХОВИЩЕ ДАНИХ УЧАСНИКІВ (для показу інформації при виході) ---
+DATA_FILE = "members_data.json"
+
+def load_data():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_data(data):
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Помилка збереження даних: {e}")
+
+members_data = load_data()
 
 
 def now_str():
@@ -67,16 +89,19 @@ async def on_ready():
 
 
 # =========================================================================
-# 2. ВХІД / ВИХІД
+# 2. ВХІД / ВИХІД (детальна версія з audit log + збереженням даних)
 # =========================================================================
 @bot.event
 async def on_member_join(member):
     guild = member.guild
     channel = bot.get_channel(JOIN_LEAVE_LOG_CHANNEL_ID)
 
-    inviter_text = "Не вдалося визначити"
+    inviter_text = "Не вдалося визначити (можливо, офіційне посилання Discord або додано адміном)"
     invite_code_text = "Невідомо"
+    invite_uses_text = "Невідомо"
     invite_used = None
+    inviter_id = None
+    inviter_name = None
 
     try:
         current_invites = await guild.invites()
@@ -90,22 +115,55 @@ async def on_member_join(member):
                     invite_used = new_inv
                     inviter_text = f"{new_inv.inviter.mention} (`{new_inv.inviter.name}`)"
                     invite_code_text = f"`{new_inv.code}`"
+                    invite_uses_text = f"`{new_inv.uses}` користувачів"
+                    inviter_id = new_inv.inviter.id
+                    inviter_name = new_inv.inviter.name
                     break
             if invite_used:
                 break
 
+    if not invite_used and guild.vanity_url_code:
+        inviter_text = "Офіційне кастомне посилання сервера (Vanity URL)"
+        invite_code_text = f"`{guild.vanity_url_code}`"
+
     invites_cache[guild.id] = current_invites
 
     created_at = member.created_at.strftime("%d.%m.%Y %H:%M")
-    account_age_days = (datetime.now(timezone.utc) - member.created_at).days
-    status = "🚨 ПІДОЗРА НА ТВІНК" if account_age_days <= 14 else "✅ Надійний акаунт"
+    now = datetime.now(timezone.utc)
+    account_age_days = (now - member.created_at).days
+
+    if account_age_days <= 14:
+        security_status = f"🚨 **ПІДОЗРА НА ТВІНК!** Акаунту всього **{account_age_days} днів**!"
+        embed_color = 0xff0000
+    else:
+        security_status = f"✅ Надійний акаунт (Вік: {account_age_days} днів)"
+        embed_color = 0x00ff00
+
+    # зберігаємо дані для майбутнього виходу
+    members_data[str(member.id)] = {
+        "name": member.name,
+        "id": member.id,
+        "joined_at": now_str(),
+        "account_created": created_at,
+        "account_age_days": account_age_days,
+        "inviter_id": inviter_id,
+        "inviter_name": inviter_name,
+        "invite_code": invite_code_text,
+    }
+    save_data(members_data)
 
     if channel:
-        embed = discord.Embed(title="🔍 НОВИЙ УЧАСНИК (ВХІД)", color=0x00ff00)
-        embed.add_field(name="Учасник:", value=f"{member.mention} (`{member.name}`, ID: `{member.id}`)", inline=False)
-        embed.add_field(name="Акаунт створено:", value=f"`{created_at}` — {status} ({account_age_days} дн.)", inline=False)
-        embed.add_field(name="Хто запросив:", value=f"{inviter_text} ({invite_code_text})", inline=False)
+        embed = discord.Embed(
+            title="🔍 ДЕТАЛЬНИЙ ЗВІТ ПРО НОВОГО УЧАСНИКА (ВХІД)",
+            description=f"Користувач {member.mention} приєднався до спільноти KAGE.",
+            color=embed_color
+        )
+        embed.add_field(name="👤 Учасник:", value=f"• Нік: `{member.name}`\n• ID: `{member.id}`", inline=False)
+        embed.add_field(name="📅 Дата створення акаунта:", value=f"• Створено: `{created_at}`\n• Статус: {security_status}", inline=False)
+        embed.add_field(name="🔗 Хто запросив за посиланнями:", value=f"• Автор: {inviter_text}", inline=False)
+        embed.add_field(name="📊 Статистика посилання:", value=f"• Код: {invite_code_text}\n• Всього зайшло за ним: {invite_uses_text}", inline=False)
         embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text=f"KAGE Security System • {datetime.now().strftime('%H:%M:%S')}")
         await channel.send(embed=embed)
 
 
@@ -116,18 +174,41 @@ async def on_member_remove(member):
     if not channel:
         return
 
+    stored = members_data.pop(str(member.id), None)
+    save_data(members_data)
+
     kick_entry = await get_audit_executor(guild, discord.AuditLogAction.kick, target_id=member.id)
     if kick_entry:
-        action_text = f"👢 Вигнаний(а) модератором {kick_entry.user.mention}"
+        action_text = f"👢 Вигнаний(а) модератором {kick_entry.user.mention} (`{kick_entry.user.name}`)"
+        if kick_entry.reason:
+            action_text += f"\nПричина: {kick_entry.reason}"
     else:
         action_text = "🚪 Покинув(ла) сервер самостійно"
 
-    embed = discord.Embed(title="📤 УЧАСНИК ВИЙШОВ", color=0xffa500)
-    embed.add_field(name="Учасник:", value=f"{member.mention} (`{member.name}`, ID: `{member.id}`)", inline=False)
+    embed = discord.Embed(
+        title="📤 УЧАСНИК ЗАЛИШИВ СЕРВЕР",
+        description=f"{member.mention} (`{member.name}`, ID: `{member.id}`)",
+        color=0xffa500
+    )
     embed.add_field(name="Дія:", value=action_text, inline=False)
-    embed.add_field(name="Ролі на момент виходу:", value=", ".join(r.mention for r in member.roles if r.name != "@everyone") or "Немає", inline=False)
-    embed.add_field(name="Час:", value=now_str(), inline=False)
+    embed.add_field(name="Час виходу:", value=now_str(), inline=False)
+
+    if stored:
+        inviter_line = f"<@{stored.get('inviter_id')}> (`{stored.get('inviter_name')}`)" if stored.get('inviter_id') else "Невідомо"
+        embed.add_field(
+            name="📅 Дані при вході:",
+            value=(f"• Зайшов: `{stored.get('joined_at')}`\n"
+                   f"• Акаунт створено: `{stored.get('account_created')}` "
+                   f"(вік на момент входу: {stored.get('account_age_days')} дн.)\n"
+                   f"• Хто запросив: {inviter_line}\n"
+                   f"• Інвайт: {stored.get('invite_code')}"),
+            inline=False
+        )
+    else:
+        embed.add_field(name="📅 Дані при вході:", value="Немає збережених даних (бот перезапускався або приєднався до входу).", inline=False)
+
     embed.set_thumbnail(url=member.display_avatar.url)
+    embed.set_footer(text="KAGE Security System")
     await channel.send(embed=embed)
 
 
