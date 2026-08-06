@@ -3,6 +3,23 @@ from discord.ext import commands
 import os
 import json
 from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+
+# Код веб-сервера для стабільної цілодобової роботи хостинга Render
+# (без цього Render "приспить" сервіс через 15 хвилин бездіяльності)
+class WebServer(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"Logs bot is alive!")
+
+def run_web_server():
+    server = HTTPServer(('0.0.0.0', 8080), WebServer)
+    server.serve_forever()
+
+threading.Thread(target=run_web_server, daemon=True).start()
 
 # =========================================================================
 # ІНТЕНТИ
