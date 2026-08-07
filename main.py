@@ -531,10 +531,19 @@ async def update_banner_loop():
         guild = await bot.fetch_guild(GUILD_ID)
         full_guild = bot.get_guild(GUILD_ID)
         total_members = full_guild.member_count if full_guild else guild.member_count
-    except: return
+    except Exception as e:
+        print(f"[BANNER] Помилка отримання guild: {e}")
+        return
     try:
-        try: image = Image.open('background.png')
-        except: image = Image.open('фон.png')
+        try:
+            image = Image.open('background.png')
+        except FileNotFoundError:
+            try:
+                image = Image.open('фон.png')
+            except FileNotFoundError:
+                print("[BANNER] Помилка: не знайдено ні background.png, ні фон.png у корені проєкту!")
+                return
+
         draw = ImageDraw.Draw(image)
         voice_members = 0
         if full_guild:
@@ -543,10 +552,16 @@ async def update_banner_loop():
         icon_user, icon_voice = "\uf0c0", "\uf130"
         num_user, num_voice = f"{total_members}", f"{voice_members}"
 
-        try: font_icons = ImageFont.truetype('iconfont.ttf', size=95)
-        except: font_icons = ImageFont.load_default()
-        try: font_nums = ImageFont.truetype('myfont.ttf', size=95)
-        except: font_nums = ImageFont.load_default()
+        try:
+            font_icons = ImageFont.truetype('iconfont.ttf', size=95)
+        except Exception:
+            print("[BANNER] Попередження: iconfont.ttf не знайдено, використовую стандартний шрифт")
+            font_icons = ImageFont.load_default()
+        try:
+            font_nums = ImageFont.truetype('myfont.ttf', size=95)
+        except Exception:
+            print("[BANNER] Попередження: myfont.ttf не знайдено, використовую стандартний шрифт")
+            font_nums = ImageFont.load_default()
 
         draw.text((220, 380), icon_user, fill=(255, 255, 255), font=font_icons)
         draw.text((350, 380), num_user, fill=(255, 255, 255), font=font_nums)
@@ -557,7 +572,13 @@ async def update_banner_loop():
         image.save(img_byte_arr, format='PNG')
         img_byte_arr.seek(0)
         await guild.edit(banner=img_byte_arr.read())
-    except: pass
+        print("[BANNER] Банер успішно оновлено")
+    except discord.Forbidden:
+        print("[BANNER] Помилка: у бота немає права керувати банером сервера (потрібен Manage Server)")
+    except discord.HTTPException as e:
+        print(f"[BANNER] Помилка Discord API: {e} (можливо, недостатній рівень бусту сервера)")
+    except Exception as e:
+        print(f"[BANNER] Невідома помилка: {e}")
 
 
 @bot.command()
